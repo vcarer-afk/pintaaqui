@@ -53,7 +53,9 @@ import {
   Building2,
   User,
   Filter,
-  CheckCheck
+  CheckCheck,
+  Copy,
+  RotateCcw
 } from 'lucide-react';
 import { 
   testSupabaseCloudConnection, 
@@ -89,6 +91,12 @@ export default function App() {
   // Supabase Cloud Connection Test State
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
+
+  // Gestão de Esquema SQL
+  const [sqlCopied, setSqlCopied] = useState(false);
+  const [sqlResetMode, setSqlResetMode] = useState<'create_safe' | 'full_reset'>('create_safe');
+  const [sqlGeneratedNotice, setSqlGeneratedNotice] = useState(false);
+  const [generatedSqlContent, setGeneratedSqlContent] = useState<string>('');
 
   // Dashboard de Gestão de Pintores (Admin)
   const [pintoresNuvem, setPintoresNuvem] = useState<PintorProfissional[]>([]);
@@ -159,6 +167,155 @@ export default function App() {
     localStorage.setItem('pintaaqui_supabase_anon', supabaseAnonKey.trim());
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const generateAppSqlCode = (mode: 'create_safe' | 'full_reset') => {
+    const dataHora = new Date().toLocaleString('pt-BR');
+    return `-- ==============================================================================
+-- PINTA AQUI - SCRIPT DDL COMPLETO DE BANCO DE DADOS (100% EM NUVEM)
+-- Gerado em: ${dataHora}
+-- Autoridade Técnica & Curadoria: Vlademir Carer
+-- Modo Selecionado: ${mode === 'full_reset' ? 'RECRIAÇÃO TOTAL (DROP TABLES & RECREATE)' : 'SEGURO (CREATE TABLES IF NOT EXISTS)'}
+-- ==============================================================================
+
+${mode === 'full_reset' ? `-- ATENÇÃO: Modo de Recriação Total. Apagando tabelas legadas para recriar do zero:
+DROP TABLE IF EXISTS public.comunidade_comentarios CASCADE;
+DROP TABLE IF EXISTS public.comunidade_postagens CASCADE;
+DROP TABLE IF EXISTS public.avaliacoes_pintores CASCADE;
+DROP TABLE IF EXISTS public.solicitacoes_orcamento CASCADE;
+DROP TABLE IF EXISTS public.pintores_profissionais CASCADE;
+` : ''}
+-- 1. TABELA DE PINTORES PROFISSIONAIS (VITRINE OFICIAL & COMUNIDADE)
+CREATE TABLE IF NOT EXISTS public.pintores_profissionais (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo_pessoa TEXT NOT NULL DEFAULT 'PF', -- 'PF' (Pessoa Física) ou 'PJ' (Pessoa Jurídica)
+  documento TEXT, -- CPF ou CNPJ formatado
+  nome TEXT NOT NULL,
+  whatsapp TEXT NOT NULL,
+  cidade TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'SP',
+  experiencia_anos INT DEFAULT 5,
+  especialidades TEXT[] DEFAULT ARRAY['Massa Corrida & Nivelamento', 'Pintura Residencial'],
+  senha TEXT, -- Senha alfanumérica de 6 dígitos para comunidade
+  status TEXT DEFAULT 'pendente', -- 'pendente', 'aprovado', 'rejeitado'
+  fotos TEXT[] DEFAULT ARRAY[]::TEXT[],
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Garantir colunas essenciais caso a tabela já exista:
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS tipo_pessoa TEXT DEFAULT 'PF';
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS documento TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS senha TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS fotos TEXT[] DEFAULT ARRAY[]::TEXT[];
+
+-- 2. TABELA DE SOLICITAÇÕES DE ORÇAMENTO (CLIENTES LEIGOS)
+CREATE TABLE IF NOT EXISTS public.solicitacoes_orcamento (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome_cliente TEXT NOT NULL,
+  telefone_cliente TEXT NOT NULL,
+  cidade TEXT NOT NULL,
+  tipo_servico TEXT NOT NULL,
+  descricao_projeto TEXT,
+  pintor_id UUID REFERENCES public.pintores_profissionais(id) ON DELETE SET NULL,
+  status TEXT DEFAULT 'pendente',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 3. TABELA DE AVALIAÇÕES DE CLIENTES
+CREATE TABLE IF NOT EXISTS public.avaliacoes_pintores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pintor_id UUID NOT NULL REFERENCES public.pintores_profissionais(id) ON DELETE CASCADE,
+  nome_cliente TEXT NOT NULL,
+  nota NUMERIC(2,1) NOT NULL DEFAULT 5.0,
+  comentario TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 4. TABELA DA COMUNIDADE DO PINTOR (FOTOS DE OBRAS & COMENTÁRIOS)
+CREATE TABLE IF NOT EXISTS public.comunidade_postagens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pintor_id UUID NOT NULL REFERENCES public.pintores_profissionais(id) ON DELETE CASCADE,
+  titulo TEXT NOT NULL,
+  descricao TEXT,
+  fotos TEXT[] DEFAULT ARRAY[]::TEXT[],
+  curtidas INT DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 5. ÍNDICES DE PERFORMANCE PARA CONSULTAS RÁPIDAS NA NUVEM
+CREATE INDEX IF NOT EXISTS idx_pintores_status ON public.pintores_profissionais(status);
+CREATE INDEX IF NOT EXISTS idx_pintores_cidade ON public.pintores_profissionais(cidade);
+CREATE INDEX IF NOT EXISTS idx_orcamentos_pintor ON public.solicitacoes_orcamento(pintor_id);
+
+-- 6. HABILITAR ROW LEVEL SECURITY (RLS)
+ALTER TABLE public.pintores_profissionais ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.solicitacoes_orcamento ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.avaliacoes_pintores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comunidade_postagens ENABLE ROW LEVEL SECURITY;
+
+-- 7. POLÍTICAS DE ACESSO (PERMISSÕES TOTALMENTE INTEGRADAS À NUVEM)
+DROP POLICY IF EXISTS "Permitir leitura de pintores" ON public.pintores_profissionais;
+CREATE POLICY "Permitir leitura de pintores" ON public.pintores_profissionais FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Permitir cadastro público de novos pintores" ON public.pintores_profissionais;
+CREATE POLICY "Permitir cadastro público de novos pintores" ON public.pintores_profissionais FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir atualização de status de pintores" ON public.pintores_profissionais;
+CREATE POLICY "Permitir atualização de status de pintores" ON public.pintores_profissionais FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Permitir exclusão de pintores" ON public.pintores_profissionais;
+CREATE POLICY "Permitir exclusão de pintores" ON public.pintores_profissionais FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Clientes podem solicitar orçamentos" ON public.solicitacoes_orcamento;
+CREATE POLICY "Clientes podem solicitar orçamentos" ON public.solicitacoes_orcamento FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Leitura de orçamentos" ON public.solicitacoes_orcamento;
+CREATE POLICY "Leitura de orçamentos" ON public.solicitacoes_orcamento FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Leitura de avaliações" ON public.avaliacoes_pintores;
+CREATE POLICY "Leitura de avaliações" ON public.avaliacoes_pintores FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Inserção de avaliações" ON public.avaliacoes_pintores;
+CREATE POLICY "Inserção de avaliações" ON public.avaliacoes_pintores FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Leitura de postagens da comunidade" ON public.comunidade_postagens;
+CREATE POLICY "Leitura de postagens da comunidade" ON public.comunidade_postagens FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Inserção de postagens na comunidade" ON public.comunidade_postagens;
+CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_postagens FOR INSERT WITH CHECK (true);
+`;
+  };
+
+  const getEffectiveSql = () => {
+    return generatedSqlContent || generateAppSqlCode(sqlResetMode);
+  };
+
+  const handleCopySqlCode = async () => {
+    const code = getEffectiveSql();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(code);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = code;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+      setSqlCopied(true);
+      setTimeout(() => setSqlCopied(false), 3000);
+    } catch (err) {
+      console.error('Erro ao copiar SQL:', err);
+    }
+  };
+
+  const handleRegenerateAllTablesSql = (novoModo?: 'create_safe' | 'full_reset') => {
+    const targetMode = novoModo || sqlResetMode;
+    const newCode = generateAppSqlCode(targetMode);
+    setGeneratedSqlContent(newCode);
+    setSqlGeneratedNotice(true);
+    setTimeout(() => setSqlGeneratedNotice(false), 3500);
   };
 
   const carregarPintores = async () => {
@@ -2255,63 +2412,127 @@ export default function App() {
 
                 {/* Aba 2: Esquema SQL */}
                 {adminTab === 'schema' && (
-                  <div className="space-y-3">
-                    <p className="text-xs text-stone-300 leading-relaxed">
-                      Aqui está o código SQL estruturado para criar as tabelas do <strong>Pinta Aqui</strong> no editor SQL do seu Supabase (Pintores Profissionais, Contatos/Orçamentos e Avaliações):
-                    </p>
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                          <FileCode className="w-4 h-4 text-amber-400" />
+                          Esquema SQL Oficial do Banco de Dados
+                        </h4>
+                        <p className="text-xs text-stone-300 mt-0.5 leading-relaxed">
+                          Estrutura DDL para rodar no editor SQL do seu Supabase Cloud.
+                        </p>
+                      </div>
+
+                      {/* Os Dois Botões Solicitados */}
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {/* Botão 1: Copiar Códigos na Memória */}
+                        <button
+                          type="button"
+                          onClick={handleCopySqlCode}
+                          className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-sm ${
+                            sqlCopied
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-amber-500 hover:bg-amber-400 text-stone-950'
+                          }`}
+                          title="Copiar todo o código SQL para a área de transferência"
+                        >
+                          {sqlCopied ? (
+                            <>
+                              <CheckCheck className="w-4 h-4" />
+                              <span>Copiado na Memória!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4" />
+                              <span>Copiar Códigos na Memória</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Botão 2: Gerar Novamente Todas as Tabelas do App */}
+                        <button
+                          type="button"
+                          onClick={() => handleRegenerateAllTablesSql()}
+                          className="py-2 px-3.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
+                          title="Gera novamente todo o script das tabelas do app"
+                        >
+                          <RotateCcw className="w-4 h-4 text-amber-400" />
+                          <span>Gerar Novamente as Tabelas</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Alertas de Notificação */}
+                    {sqlCopied && (
+                      <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs flex items-center gap-2">
+                        <CheckCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Código SQL copiado para a memória (clipboard)! Agora basta colar no SQL Editor do Supabase.</span>
+                      </div>
+                    )}
+
+                    {sqlGeneratedNotice && (
+                      <div className="p-3 rounded-xl bg-amber-950/80 border border-amber-500/50 text-amber-200 text-xs flex items-center gap-2">
+                        <RotateCcw className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Todas as tabelas do app foram regeradas no script com sucesso!</span>
+                      </div>
+                    )}
+
+                    {/* Barra de Opções do Gerador de Tabelas */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-stone-950 rounded-xl border border-stone-850 text-xs text-stone-300">
+                      <span className="font-semibold text-stone-300">Modo de Geração do Script:</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSqlResetMode('create_safe');
+                            handleRegenerateAllTablesSql('create_safe');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg transition font-medium ${
+                            sqlResetMode === 'create_safe'
+                              ? 'bg-amber-500 text-stone-950 font-bold'
+                              : 'bg-stone-900 text-stone-400 hover:text-white border border-stone-800'
+                          }`}
+                        >
+                          Seguro (CREATE IF NOT EXISTS)
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSqlResetMode('full_reset');
+                            handleRegenerateAllTablesSql('full_reset');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg transition font-medium ${
+                            sqlResetMode === 'full_reset'
+                              ? 'bg-red-600 text-white font-bold'
+                              : 'bg-stone-900 text-stone-400 hover:text-white border border-stone-800'
+                          }`}
+                        >
+                          Reset Completo (DROP & RECREATE)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Área de Visualização do Código */}
                     <div className="relative">
-                      <pre className="bg-stone-950 border border-stone-800 p-3.5 rounded-xl text-[11px] font-mono text-amber-200 overflow-x-auto max-h-64 leading-relaxed">
-{`-- 1. TABELA DE PINTORES PROFISSIONAIS (PINTA AQUI PRO)
-CREATE TABLE IF NOT EXISTS public.pintores_profissionais (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tipo_pessoa TEXT NOT NULL DEFAULT 'PF', -- 'PF' (Pessoa Física) ou 'PJ' (Pessoa Jurídica)
-  documento TEXT, -- CPF ou CNPJ
-  nome TEXT NOT NULL,
-  whatsapp TEXT NOT NULL,
-  cidade TEXT NOT NULL,
-  estado TEXT NOT NULL DEFAULT 'SP',
-  experiencia_anos INT DEFAULT 5,
-  especialidades TEXT[] DEFAULT ARRAY['Residencial', 'Texturas'],
-  senha TEXT, -- Senha alfanumérica de 6 dígitos para comunidade
-  status TEXT DEFAULT 'pendente', -- 'pendente', 'aprovado', 'rejeitado'
-  fotos TEXT[] DEFAULT ARRAY[]::TEXT[],
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- CASO A TABELA JÁ TENHA SIDO CRIADA ANTES, ATUALIZAR COLUNAS:
-ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS tipo_pessoa TEXT DEFAULT 'PF';
-ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS documento TEXT;
-ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS senha TEXT;
-ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS fotos TEXT[] DEFAULT ARRAY[]::TEXT[];
-
--- 2. TABELA DE SOLICITAÇÃO DE ORÇAMENTOS (CLIENTES LEIGOS)
-CREATE TABLE IF NOT EXISTS public.solicitacoes_orcamento (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nome_cliente TEXT NOT NULL,
-  telefone_cliente TEXT NOT NULL,
-  cidade TEXT NOT NULL,
-  tipo_servico TEXT NOT NULL,
-  descricao_projeto TEXT,
-  pintor_id UUID REFERENCES public.pintores_profissionais(id),
-  status TEXT DEFAULT 'pendente',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- HABILITAR RLS (Row Level Security)
-ALTER TABLE public.pintores_profissionais ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.solicitacoes_orcamento ENABLE ROW LEVEL SECURITY;
-
--- POLÍTICAS DE ACESSO (PERMITIR OPERAÇÕES SEGURAS EM NUVEM)
-CREATE POLICY "Permitir leitura de pintores" ON public.pintores_profissionais FOR SELECT USING (true);
-CREATE POLICY "Permitir cadastro público de novos pintores" ON public.pintores_profissionais FOR INSERT WITH CHECK (true);
-CREATE POLICY "Permitir atualização de status de pintores" ON public.pintores_profissionais FOR UPDATE USING (true);
-CREATE POLICY "Permitir exclusão de pintores" ON public.pintores_profissionais FOR DELETE USING (true);
-CREATE POLICY "Clientes podem solicitar orçamentos" ON public.solicitacoes_orcamento FOR INSERT WITH CHECK (true);`}
+                      <pre className="bg-stone-950 border border-stone-800 p-4 rounded-xl text-[11px] font-mono text-amber-200 overflow-x-auto max-h-80 leading-relaxed select-all">
+                        {getEffectiveSql()}
                       </pre>
                     </div>
-                    <p className="text-[11px] text-stone-400">
-                      Basta copiar o código acima e colar na aba <strong>SQL Editor</strong> dentro do painel do seu Supabase.
-                    </p>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-stone-400 pt-1">
+                      <span>
+                        Contém: <strong>pintores_profissionais</strong>, <strong>solicitacoes_orcamento</strong>, <strong>avaliacoes_pintores</strong>, <strong>comunidade_postagens</strong>, RLS e índices.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopySqlCode}
+                        className="text-amber-400 hover:underline font-bold inline-flex items-center gap-1 self-start sm:self-auto"
+                      >
+                        <Copy className="w-3.5 h-3.5" /> Clique para copiar todo o código
+                      </button>
+                    </div>
                   </div>
                 )}
 
