@@ -39,7 +39,12 @@ import {
   Activity,
   RefreshCw
 } from 'lucide-react';
-import { testSupabaseCloudConnection, ConnectionTestResult } from './lib/supabase';
+import { 
+  testSupabaseCloudConnection, 
+  ConnectionTestResult,
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_ANON_KEY 
+} from './lib/supabase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'geral' | 'desvendando' | 'tipos' | 'texturas' | 'ferramentas' | 'patologias'>('geral');
@@ -54,10 +59,9 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
 
-  // Supabase & Site Settings
-  const [supabaseUrl, setSupabaseUrl] = useState('');
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
-  const [supabaseServiceKey, setSupabaseServiceKey] = useState('');
+  // Supabase & Site Settings (Com credenciais padrão em nuvem)
+  const [supabaseUrl, setSupabaseUrl] = useState(DEFAULT_SUPABASE_URL);
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(DEFAULT_SUPABASE_ANON_KEY);
   const [adminTab, setAdminTab] = useState<'supabase' | 'schema' | 'geral'>('supabase');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -65,7 +69,7 @@ export default function App() {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
-  // Load saved credentials from localStorage
+  // Load saved credentials from localStorage if user updated them, else defaults
   useEffect(() => {
     const savedAuth = localStorage.getItem('pintaaqui_admin_logged');
     if (savedAuth === 'true') {
@@ -73,10 +77,8 @@ export default function App() {
     }
     const savedUrl = localStorage.getItem('pintaaqui_supabase_url');
     const savedAnon = localStorage.getItem('pintaaqui_supabase_anon');
-    const savedService = localStorage.getItem('pintaaqui_supabase_service');
     if (savedUrl) setSupabaseUrl(savedUrl);
     if (savedAnon) setSupabaseAnonKey(savedAnon);
-    if (savedService) setSupabaseServiceKey(savedService);
   }, []);
 
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -108,7 +110,6 @@ export default function App() {
     e.preventDefault();
     localStorage.setItem('pintaaqui_supabase_url', supabaseUrl.trim());
     localStorage.setItem('pintaaqui_supabase_anon', supabaseAnonKey.trim());
-    localStorage.setItem('pintaaqui_supabase_service', supabaseServiceKey.trim());
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
@@ -1446,19 +1447,6 @@ export default function App() {
                         placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                         className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
                         required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-stone-300 mb-1">
-                        Supabase Service Role Key (Chave Administrativa - Opcional)
-                      </label>
-                      <input 
-                        type="password"
-                        value={supabaseServiceKey}
-                        onChange={(e) => setSupabaseServiceKey(e.target.value)}
-                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
                       />
                     </div>
 
