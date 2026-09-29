@@ -2,5 +2,7 @@
   "name": "Pinta Aqui - Por Vlademir Carer",
   "description": "Plataforma completa de tintas imobiliárias, dicas para leigos e conexões com pintores profissionais qualificados, sob a curadoria de Vlademir Carer.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
