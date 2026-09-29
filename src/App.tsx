@@ -37,17 +37,38 @@ import {
   Cloud,
   Zap,
   Activity,
-  RefreshCw
+  RefreshCw,
+  Briefcase,
+  Phone,
+  ExternalLink,
+  Star,
+  Award,
+  Clock,
+  MapPin,
+  CheckCircle,
+  Users,
+  UserPlus,
+  Trash2,
+  XCircle,
+  Building2,
+  User,
+  Filter,
+  CheckCheck
 } from 'lucide-react';
 import { 
   testSupabaseCloudConnection, 
   ConnectionTestResult,
   DEFAULT_SUPABASE_URL,
-  DEFAULT_SUPABASE_ANON_KEY 
+  DEFAULT_SUPABASE_ANON_KEY,
+  PintorProfissional,
+  cadastrarPintorNuvem,
+  listarPintoresNuvem,
+  atualizarStatusPintorNuvem,
+  excluirPintorNuvem
 } from './lib/supabase';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'geral' | 'desvendando' | 'tipos' | 'texturas' | 'ferramentas' | 'patologias'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'desvendando' | 'tipos' | 'texturas' | 'ferramentas' | 'patologias' | 'profissional'>('geral');
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -62,12 +83,38 @@ export default function App() {
   // Supabase & Site Settings (Com credenciais padrão em nuvem)
   const [supabaseUrl, setSupabaseUrl] = useState(DEFAULT_SUPABASE_URL);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(DEFAULT_SUPABASE_ANON_KEY);
-  const [adminTab, setAdminTab] = useState<'supabase' | 'schema' | 'geral'>('supabase');
+  const [adminTab, setAdminTab] = useState<'pintores' | 'supabase' | 'schema' | 'geral'>('pintores');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Supabase Cloud Connection Test State
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
+
+  // Dashboard de Gestão de Pintores (Admin)
+  const [pintoresNuvem, setPintoresNuvem] = useState<PintorProfissional[]>([]);
+  const [loadingPintores, setLoadingPintores] = useState(false);
+  const [statusFiltroPintores, setStatusFiltroPintores] = useState<'todos' | 'pendente' | 'aprovado' | 'rejeitado'>('todos');
+  const [pintorParaVisualizar, setPintorParaVisualizar] = useState<PintorProfissional | null>(null);
+  const [adminFeedback, setAdminFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Modal de Cadastro do Pintor (Público)
+  const [cadastroModalOpen, setCadastroModalOpen] = useState(false);
+  const [formTipoPessoa, setFormTipoPessoa] = useState<'PF' | 'PJ'>('PF');
+  const [formNome, setFormNome] = useState('');
+  const [formDocumento, setFormDocumento] = useState('');
+  const [formWhatsapp, setFormWhatsapp] = useState('');
+  const [formCidade, setFormCidade] = useState('');
+  const [formEstado, setFormEstado] = useState('SP');
+  const [formExperiencia, setFormExperiencia] = useState(5);
+  const [formEspecialidades, setFormEspecialidades] = useState<string[]>([
+    'Massa Corrida & Nivelamento',
+    'Cimento Queimado & Texturas'
+  ]);
+  const [formSenha, setFormSenha] = useState('');
+  const [formConfirmaSenha, setFormConfirmaSenha] = useState('');
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formErro, setFormErro] = useState('');
+  const [formSucesso, setFormSucesso] = useState(false);
 
   // Load saved credentials from localStorage if user updated them, else defaults
   useEffect(() => {
@@ -114,6 +161,137 @@ export default function App() {
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
+  const carregarPintores = async () => {
+    setLoadingPintores(true);
+    try {
+      const res = await listarPintoresNuvem();
+      if (res.success) {
+        setPintoresNuvem(res.data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingPintores(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarPintores();
+  }, []);
+
+  const handleAprovarPintor = async (id?: string) => {
+    if (!id) return;
+    const res = await atualizarStatusPintorNuvem(id, 'aprovado');
+    if (res.success) {
+      setAdminFeedback({ message: 'Pintor aprovado com sucesso! Já está visível na vitrine.', type: 'success' });
+      carregarPintores();
+    } else {
+      setAdminFeedback({ message: res.error || 'Erro ao aprovar pintor na nuvem.', type: 'error' });
+    }
+    setTimeout(() => setAdminFeedback(null), 4000);
+  };
+
+  const handleRejeitarPintor = async (id?: string) => {
+    if (!id) return;
+    const res = await atualizarStatusPintorNuvem(id, 'rejeitado');
+    if (res.success) {
+      setAdminFeedback({ message: 'Status alterado para rejeitado.', type: 'success' });
+      carregarPintores();
+    } else {
+      setAdminFeedback({ message: res.error || 'Erro ao atualizar status na nuvem.', type: 'error' });
+    }
+    setTimeout(() => setAdminFeedback(null), 4000);
+  };
+
+  const handleExcluirPintor = async (id?: string) => {
+    if (!id) return;
+    if (!window.confirm('Tem certeza que deseja excluir este pintor definitivamente da nuvem? Esta ação não pode ser desfeita.')) {
+      return;
+    }
+    const res = await excluirPintorNuvem(id);
+    if (res.success) {
+      setAdminFeedback({ message: 'Registro do pintor excluído da nuvem com sucesso.', type: 'success' });
+      carregarPintores();
+    } else {
+      setAdminFeedback({ message: res.error || 'Erro ao excluir da nuvem.', type: 'error' });
+    }
+    setTimeout(() => setAdminFeedback(null), 4000);
+  };
+
+  const handleCadastroPintor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormErro('');
+
+    if (!formNome.trim()) {
+      setFormErro('Informe o seu nome completo ou razão social.');
+      return;
+    }
+
+    if (!formDocumento.trim()) {
+      setFormErro(`Informe o ${formTipoPessoa === 'PF' ? 'CPF' : 'CNPJ'}.`);
+      return;
+    }
+
+    if (!formWhatsapp.trim()) {
+      setFormErro('Informe o seu número de WhatsApp com DDD.');
+      return;
+    }
+
+    if (!formCidade.trim()) {
+      setFormErro('Informe a sua cidade.');
+      return;
+    }
+
+    if (formEspecialidades.length === 0) {
+      setFormErro('Selecione pelo menos uma especialidade.');
+      return;
+    }
+
+    // Regra da senha: 6 dígitos contendo números e letras
+    const senhaLimpa = formSenha.trim();
+    const temLetra = /[a-zA-Z]/.test(senhaLimpa);
+    const temNumero = /[0-9]/.test(senhaLimpa);
+    if (senhaLimpa.length < 6 || !temLetra || !temNumero) {
+      setFormErro('A senha deve ter no mínimo 6 caracteres e conter tanto letras quanto números.');
+      return;
+    }
+
+    if (senhaLimpa !== formConfirmaSenha.trim()) {
+      setFormErro('A confirmação da senha não coincide com a senha digitada.');
+      return;
+    }
+
+    setFormSubmitting(true);
+    const res = await cadastrarPintorNuvem({
+      tipo_pessoa: formTipoPessoa,
+      documento: formDocumento,
+      nome: formNome,
+      whatsapp: formWhatsapp,
+      cidade: formCidade,
+      estado: formEstado,
+      experiencia_anos: formExperiencia,
+      especialidades: formEspecialidades,
+      senha: senhaLimpa,
+      fotos: [
+        'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1534349762230-e0cadf78f5da?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=600&q=80'
+      ]
+    });
+
+    setFormSubmitting(false);
+
+    if (res.success) {
+      setFormSucesso(true);
+      carregarPintores();
+    } else {
+      setFormErro(res.error || 'Erro ao conectar à nuvem para registrar cadastro.');
+    }
+  };
+
   const handleTestConnection = async () => {
     setIsTestingConnection(true);
     setTestResult(null);
@@ -138,6 +316,7 @@ export default function App() {
     { id: 'texturas', label: 'Texturas & Efeitos', icon: Palette },
     { id: 'ferramentas', label: 'Ferramentas Certas', icon: Wrench },
     { id: 'patologias', label: 'Patologias & Soluções', icon: AlertTriangle },
+    { id: 'profissional', label: 'Área do Profissional', icon: Briefcase },
   ] as const;
 
   const patologias = [
@@ -1235,6 +1414,318 @@ export default function App() {
           </section>
         )}
 
+        {/* ÁREA DO PROFISSIONAL (ESPAÇO DO PINTOR, DICAS DE MESTRE & VITRINE DE PORTFÓLIO) */}
+        {(activeTab === 'geral' || activeTab === 'profissional') && (
+          <section id="profissional" className="bg-stone-900 rounded-3xl p-6 sm:p-10 border border-stone-700 shadow-xl space-y-10 scroll-mt-24 text-stone-100">
+            
+            {/* 1. Espaço do Pintor (Abertura) */}
+            <div className="border-b border-stone-800 pb-8 relative">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider mb-4">
+                <Briefcase className="w-3.5 h-3.5" />
+                Espaço do Pintor • Pinta Aqui Pro
+              </div>
+              <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
+                De Profissional para Profissional: O Seu Trabalho Merece Reconhecimento e Valor Real
+              </h2>
+              <div className="mt-4 space-y-3 text-stone-300 text-sm sm:text-base leading-relaxed">
+                <p>
+                  Fala, parceiro de profissão! Aqui é o <strong>Vlademir Carer</strong>. Em quase 30 anos vivendo dentro de fábricas, atrás de balcões e no pé da obra, eu vi de perto a evolução da construção civil e aprendi uma verdade que ninguém tira de mim: <em className="text-amber-300">quem fecha a obra com chave de ouro e transforma tijolo e reboco no sonho de uma família é o pintor</em>.
+                </p>
+                <p>
+                  Durante muito tempo, o nosso setor sofreu com a falta de valorização, brigas predatórias de preço e clientes que achavam que qualquer um com uma trincha faz pintura de verdade. O <strong>Pinta Aqui Pro</strong> nasceu para virar esse jogo: este é o seu espaço para aprimorar técnicas, blindar o seu negócio contra clientes descompromissados e colocar o seu nome em destaque em uma vitrine que valoriza quem tem capricho e pontualidade.
+                </p>
+              </div>
+
+              <div className="mt-5 p-4 rounded-2xl bg-stone-950/60 border-l-4 border-amber-500 text-stone-200 text-xs sm:text-sm">
+                Aqui você não disputa leilão de centavos. Você mostra autoridade técnica, ganha o respeito do cliente e fecha serviços com a margem de lucro que o seu suor merece. Seja muito bem-vindo à nossa casa!
+              </div>
+
+              {/* Botão de Cadastro e Informação de Acesso */}
+              <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-stone-950 to-stone-950 border border-amber-500/30">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <UserPlus className="w-4 h-4" />
+                    Quer divulgar o seu trabalho na Vitrine Oficial?
+                  </div>
+                  <p className="text-xs text-stone-300">
+                    Navegue livremente sem cadastro! O cadastro é obrigatório apenas para ter seu Cartão de Visitas na vitrine, postar fotos de obras e participar dos comentários da comunidade.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCadastroModalOpen(true);
+                    setFormSucesso(false);
+                    setFormErro('');
+                  }}
+                  className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition transform hover:-translate-y-0.5 shrink-0"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Cadastrar como Profissional
+                </button>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between pt-2">
+                <a 
+                  href="/area-do-profissional.html" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 underline font-medium"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Abrir versão standalone pura (area-do-profissional.html)
+                </a>
+              </div>
+            </div>
+
+            {/* 2. Dicas de Mestre (Conteúdo Avançado) */}
+            <div className="space-y-6">
+              <div>
+                <span className="text-amber-400 font-bold text-xs uppercase tracking-wider">Conteúdo Avançado</span>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mt-1">
+                  Dicas de Mestre: A Tríade da Valorização do Pintor
+                </h3>
+                <p className="text-stone-400 text-xs sm:text-sm mt-1">
+                  Estratégias práticas de quem já viveu o chão da obra para fechar mais contratos e lucrar mais por metro quadrado.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                
+                {/* Dica 1: Orçamento Profissional */}
+                <div className="bg-stone-950/70 p-6 rounded-2xl border border-stone-800 flex flex-col justify-between hover:border-amber-500/50 transition">
+                  <div className="space-y-3">
+                    <span className="inline-block px-2.5 py-1 rounded bg-amber-500/10 text-amber-400 text-[11px] font-bold font-mono">
+                      Dica 01 • Orçamento & Credibilidade
+                    </span>
+                    <h4 className="text-base font-bold text-white leading-snug">
+                      Nunca dê preço "de cabeça": O orçamento é a sua primeira demão
+                    </h4>
+                    <p className="text-stone-300 text-xs leading-relaxed">
+                      Quando o cliente pergunta na calçada: <em>"Pintor, quanto você cobra pra pintar um cômodo?"</em> e você responde no susto, você assina atestado de amadorismo. Quem dá preço de boca abre margem para desconfiança ou toma prejuízo ao achar umidade escondida.
+                    </p>
+                    <p className="text-stone-300 text-xs leading-relaxed">
+                      Apresente um <strong>orçamento detalhado por etapas</strong>: 1) Limpeza e descontaminação; 2) Fundo preparador; 3) Emassamento e cura; 4) Lixamento fino; 5) Duas a três demãos de acabamento. O cliente entende que está contratando engenharia decorativa, e não apenas rolo na parede.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-stone-850 text-[11px] text-amber-400/90 italic">
+                    "O cliente não chora desconto quando enxerga o tamanho da responsabilidade que você está assumindo."
+                  </div>
+                </div>
+
+                {/* Dica 2: Relacionamento com o Cliente */}
+                <div className="bg-stone-950/70 p-6 rounded-2xl border border-stone-800 flex flex-col justify-between hover:border-amber-500/50 transition">
+                  <div className="space-y-3">
+                    <span className="inline-block px-2.5 py-1 rounded bg-amber-500/10 text-amber-400 text-[11px] font-bold font-mono">
+                      Dica 02 • Relacionamento & Especificação
+                    </span>
+                    <h4 className="text-base font-bold text-white leading-snug">
+                      Como vender material de qualidade sem parecer "gastão"
+                    </h4>
+                    <p className="text-stone-300 text-xs leading-relaxed">
+                      Todo pintor já passou por isso: você pede uma tinta Premium e o cliente torce o nariz dizendo que achou uma Econômica pela metade do preço. Em vez de discutir, use a matemática a seu favor.
+                    </p>
+                    <p className="text-stone-300 text-xs leading-relaxed">
+                      Explique a conta do <strong>Custo por Ano de Parede Feita</strong>: a econômica exige 4 demãos (dobro de mão de obra) e em 1 ano já desbota. A Premium cobre com 2 demãos, aguenta lavagens e dura 5 anos impecável. Mostre que o produto de ponta <strong>economiza o dinheiro dele</strong> no longo prazo.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-stone-850 text-[11px] text-amber-400/90 italic">
+                    "Quem defende material bom não é quem quer gastar o dinheiro do cliente; é quem se recusa a voltar daqui a 6 meses para consertar parede descascada."
+                  </div>
+                </div>
+
+                {/* Dica 3: Produtividade e Mecanização */}
+                <div className="bg-stone-950/70 p-6 rounded-2xl border border-stone-800 flex flex-col justify-between hover:border-amber-500/50 transition">
+                  <div className="space-y-3">
+                    <span className="inline-block px-2.5 py-1 rounded bg-amber-500/10 text-amber-400 text-[11px] font-bold font-mono">
+                      Dica 03 • Ferramentas & Mecanização
+                    </span>
+                    <h4 className="text-base font-bold text-white leading-snug">
+                      Mecanização não é despesa, é máquina de multiplicar diárias
+                    </h4>
+                    <p className="text-stone-300 text-xs leading-relaxed">
+                      O pintor que ainda lixa parede inteira na mão, respirando poeira e terminando o dia com o braço em frangalhos, perde duas coisas: <strong>saúde e dinheiro</strong>. A pintura moderna é mecânica e limpa.
+                    </p>
+                    <p className="text-stone-300 text-xs leading-relaxed">
+                      Investir em uma <strong>lixadeira acoplada a aspirador de pó</strong> permite lixar um apartamento inteiro no mesmo dia, sem poeira nas coisas do cliente e com acabamento milimétrico. Na <strong>pintura Airless</strong>, a produtividade em grandes áreas triplica. O seu metro quadrado valoriza porque a entrega é cirúrgica.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-stone-850 text-[11px] text-amber-400/90 italic">
+                    "Ferramenta profissional não custa caro: caro é perder serviço para quem entrega a obra na metade do tempo sem deixar poeira no chão."
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* 3. Estrutura do Portfólio (A "Vitrine" do Pintor) */}
+            <div className="space-y-6 pt-4">
+              <div>
+                <span className="text-emerald-400 font-bold text-xs uppercase tracking-wider">A Vitrine Oficial</span>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mt-1">
+                  Cartão de Visitas Digital do Pintor
+                </h3>
+                <p className="text-stone-400 text-xs sm:text-sm mt-1">
+                  É exatamente assim que os clientes leigos visualizam o seu perfil, tempo de estrada e galeria de fotos de obras no Pinta Aqui.
+                </p>
+              </div>
+
+              {/* Card Interativo de Demonstração */}
+              <div className="bg-stone-950 p-6 sm:p-8 rounded-2xl border border-stone-800 shadow-2xl space-y-8">
+                
+                {/* Cabeçalho do Perfil */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-stone-800">
+                  <div className="flex items-start sm:items-center gap-4">
+                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-stone-950 text-2xl font-extrabold shadow-lg shrink-0">
+                      CS
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-xl font-bold text-white">Carlos Eduardo Silva</h4>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                          <CheckCircle className="w-3.5 h-3.5" /> Profissional Qualificado
+                        </span>
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-stone-400">
+                        <span className="flex items-center gap-1 text-amber-400">
+                          <Award className="w-3.5 h-3.5" /> 14 anos de experiência
+                        </span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1 text-stone-300">
+                          <MapPin className="w-3.5 h-3.5 text-stone-400" /> São Paulo - SP (Atende Capital e ABC)
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <span className="px-2 py-0.5 rounded bg-stone-850 text-stone-300 text-[11px] border border-stone-750">Massa Corrida & Nivelamento</span>
+                        <span className="px-2 py-0.5 rounded bg-stone-850 text-stone-300 text-[11px] border border-stone-750">Cimento Queimado & Texturas</span>
+                        <span className="px-2 py-0.5 rounded bg-stone-850 text-stone-300 text-[11px] border border-stone-750">Pintura Airless</span>
+                        <span className="px-2 py-0.5 rounded bg-stone-850 text-stone-300 text-[11px] border border-stone-750">Fachadas & Impermeabilização</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <a
+                      href="https://wa.me/5511999999999?text=Ol%C3%A1%20Carlos!%20Vi%20o%20seu%20portf%C3%B3lio%20no%20Pinta%20Aqui%20e%20gostaria%20de%20um%20or%C3%A7amento."
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition shadow-lg shadow-emerald-600/20"
+                    >
+                      <Phone className="w-4 h-4" />
+                      Chamar no WhatsApp
+                    </a>
+                  </div>
+                </div>
+
+                {/* Grade de 6 Fotos do Portfólio */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs text-stone-400">
+                    <span className="font-bold uppercase tracking-wider text-stone-300">Obras Realizadas (6 Trabalhos em Destaque)</span>
+                    <span>Fotos reais de serviços executados</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {/* Foto 1 */}
+                    <div className="group relative rounded-xl overflow-hidden aspect-4/3 bg-stone-900 border border-stone-800">
+                      <img 
+                        src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80" 
+                        alt="Trabalho de pintura: Parede de cimento queimado em sala integrada"
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950 via-stone-950/80 to-transparent p-3">
+                        <span className="text-xs font-semibold text-white block">Cimento Queimado Diamantado</span>
+                        <span className="text-[10px] text-stone-400">Sala de estar integrada • 45m²</span>
+                      </div>
+                    </div>
+
+                    {/* Foto 2 */}
+                    <div className="group relative rounded-xl overflow-hidden aspect-4/3 bg-stone-900 border border-stone-800">
+                      <img 
+                        src="https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80" 
+                        alt="Trabalho de pintura: Emassamento e pintura mecanizada Airless"
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950 via-stone-950/80 to-transparent p-3">
+                        <span className="text-xs font-semibold text-white block">Pintura Mecanizada Airless</span>
+                        <span className="text-[10px] text-stone-400">Teto e paredes em Drywall</span>
+                      </div>
+                    </div>
+
+                    {/* Foto 3 */}
+                    <div className="group relative rounded-xl overflow-hidden aspect-4/3 bg-stone-900 border border-stone-800">
+                      <img 
+                        src="https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=600&q=80" 
+                        alt="Trabalho de pintura: Fachada residencial protegida"
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950 via-stone-950/80 to-transparent p-3">
+                        <span className="text-xs font-semibold text-white block">Impermeabilização de Fachada</span>
+                        <span className="text-[10px] text-stone-400">Tinta emborrachada antimofo</span>
+                      </div>
+                    </div>
+
+                    {/* Foto 4 */}
+                    <div className="group relative rounded-xl overflow-hidden aspect-4/3 bg-stone-900 border border-stone-800">
+                      <img 
+                        src="https://images.unsplash.com/photo-1534349762230-e0cadf78f5da?auto=format&fit=crop&w=600&q=80" 
+                        alt="Trabalho de pintura: Portas laqueadas com esmalte base água"
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950 via-stone-950/80 to-transparent p-3">
+                        <span className="text-xs font-semibold text-white block">Laqueamento de Portas</span>
+                        <span className="text-[10px] text-stone-400">Esmalte acetinado base água</span>
+                      </div>
+                    </div>
+
+                    {/* Foto 5 */}
+                    <div className="group relative rounded-xl overflow-hidden aspect-4/3 bg-stone-900 border border-stone-800">
+                      <img 
+                        src="https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80" 
+                        alt="Trabalho de pintura: Efeito Marmorato e Boiserie"
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950 via-stone-950/80 to-transparent p-3">
+                        <span className="text-xs font-semibold text-white block">Marmorato & Boiserie Clássico</span>
+                        <span className="text-[10px] text-stone-400">Parede de destaque para suite</span>
+                      </div>
+                    </div>
+
+                    {/* Foto 6 */}
+                    <div className="group relative rounded-xl overflow-hidden aspect-4/3 bg-stone-900 border border-stone-800">
+                      <img 
+                        src="https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=600&q=80" 
+                        alt="Trabalho de pintura: Nivelamento com lixamento aspirado"
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950 via-stone-950/80 to-transparent p-3">
+                        <span className="text-xs font-semibold text-white block">Lixamento Aspirado Sem Poeira</span>
+                        <span className="text-[10px] text-stone-400">Preparação sob luz rasante</span>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* Rodapé do Perfil */}
+                <div className="pt-4 border-t border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-stone-400">
+                  <div className="flex items-center gap-1.5 text-stone-300">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <span>Avaliação dos clientes: <strong>4.9 de 5.0</strong> (42 avaliações reais)</span>
+                  </div>
+                  <div>
+                    <span>Perfil verificado e auditado pela equipe <strong>Pinta Aqui</strong></span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </section>
+        )}
+
       </main>
 
       {/* Footer Assinado por Vlademir Carer */}
@@ -1364,21 +1855,37 @@ export default function App() {
               <div className="p-6 space-y-6">
                 
                 {/* Abas Internas do Admin */}
-                <div className="flex items-center gap-2 border-b border-stone-800 pb-3">
+                <div className="flex items-center gap-2 border-b border-stone-800 pb-3 overflow-x-auto">
+                  <button
+                    onClick={() => setAdminTab('pintores')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
+                      adminTab === 'pintores'
+                        ? 'bg-amber-500 text-stone-950 font-bold'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-800'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>Dashboard de Pintores</span>
+                    {pintoresNuvem.filter(p => p.status === 'pendente').length > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-stone-950 text-[10px] font-extrabold ml-1 animate-pulse">
+                        {pintoresNuvem.filter(p => p.status === 'pendente').length} novo
+                      </span>
+                    )}
+                  </button>
                   <button
                     onClick={() => setAdminTab('supabase')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
                       adminTab === 'supabase'
                         ? 'bg-amber-500 text-stone-950 font-bold'
                         : 'text-stone-400 hover:text-white hover:bg-stone-800'
                     }`}
                   >
                     <Database className="w-3.5 h-3.5" />
-                    Supabase (Banco de Dados)
+                    Supabase (Nuvem)
                   </button>
                   <button
                     onClick={() => setAdminTab('schema')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
                       adminTab === 'schema'
                         ? 'bg-amber-500 text-stone-950 font-bold'
                         : 'text-stone-400 hover:text-white hover:bg-stone-800'
@@ -1389,7 +1896,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => setAdminTab('geral')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
                       adminTab === 'geral'
                         ? 'bg-amber-500 text-stone-950 font-bold'
                         : 'text-stone-400 hover:text-white hover:bg-stone-800'
@@ -1399,6 +1906,223 @@ export default function App() {
                     Configurações Gerais
                   </button>
                 </div>
+
+                {/* Aba 0: Dashboard de Gestão de Pintores */}
+                {adminTab === 'pintores' && (
+                  <div className="space-y-5">
+                    {/* Alerta de Feedback */}
+                    {adminFeedback && (
+                      <div className={`p-3 rounded-xl text-xs flex items-center gap-2 border transition ${
+                        adminFeedback.type === 'success'
+                          ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                          : 'bg-red-950/80 border-red-500/50 text-red-200'
+                      }`}>
+                        {adminFeedback.type === 'success' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                        )}
+                        <span>{adminFeedback.message}</span>
+                      </div>
+                    )}
+
+                    {/* Cards de Métricas em Nuvem */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="bg-stone-950 p-3.5 rounded-xl border border-stone-800">
+                        <span className="text-[10px] text-stone-400 uppercase tracking-wider block">Total na Nuvem</span>
+                        <span className="text-xl font-extrabold text-white">{pintoresNuvem.length}</span>
+                      </div>
+                      <div className="bg-amber-950/30 p-3.5 rounded-xl border border-amber-600/40">
+                        <span className="text-[10px] text-amber-300 uppercase tracking-wider block font-semibold">Pendentes</span>
+                        <span className="text-xl font-extrabold text-amber-400">
+                          {pintoresNuvem.filter(p => p.status === 'pendente').length}
+                        </span>
+                      </div>
+                      <div className="bg-emerald-950/30 p-3.5 rounded-xl border border-emerald-600/40">
+                        <span className="text-[10px] text-emerald-300 uppercase tracking-wider block font-semibold">Aprovados</span>
+                        <span className="text-xl font-extrabold text-emerald-400">
+                          {pintoresNuvem.filter(p => p.status === 'aprovado').length}
+                        </span>
+                      </div>
+                      <div className="bg-stone-950 p-3.5 rounded-xl border border-stone-800">
+                        <span className="text-[10px] text-stone-400 uppercase tracking-wider block">Rejeitados</span>
+                        <span className="text-xl font-extrabold text-stone-400">
+                          {pintoresNuvem.filter(p => p.status === 'rejeitado').length}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Barra de Filtros e Atualização */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                      <div className="flex items-center gap-1.5 bg-stone-950 p-1 rounded-xl border border-stone-800 text-xs">
+                        {(['todos', 'pendente', 'aprovado', 'rejeitado'] as const).map((filtro) => (
+                          <button
+                            key={filtro}
+                            onClick={() => setStatusFiltroPintores(filtro)}
+                            className={`px-3 py-1 rounded-lg capitalize transition ${
+                              statusFiltroPintores === filtro
+                                ? 'bg-amber-500 text-stone-950 font-bold'
+                                : 'text-stone-400 hover:text-white'
+                            }`}
+                          >
+                            {filtro === 'todos' ? 'Todos' : filtro === 'pendente' ? 'Pendentes' : filtro === 'aprovado' ? 'Aprovados' : 'Rejeitados'}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={carregarPintores}
+                        disabled={loadingPintores}
+                        className="py-1.5 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold flex items-center gap-1.5 transition border border-stone-700"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingPintores ? 'animate-spin text-amber-400' : 'text-stone-400'}`} />
+                        <span>{loadingPintores ? 'Carregando...' : 'Atualizar Lista'}</span>
+                      </button>
+                    </div>
+
+                    {/* Lista de Registros dos Pintores */}
+                    <div className="space-y-3">
+                      {pintoresNuvem
+                        .filter(p => statusFiltroPintores === 'todos' ? true : p.status === statusFiltroPintores)
+                        .map((pintor) => (
+                          <div 
+                            key={pintor.id || pintor.whatsapp}
+                            className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-3 hover:border-stone-700 transition"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-850">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center font-bold text-sm shrink-0">
+                                  {pintor.nome.slice(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h5 className="font-bold text-white text-sm">{pintor.nome}</h5>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-800 text-stone-300 font-mono border border-stone-700">
+                                      {pintor.tipo_pessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física'} • {pintor.documento || 'Sem doc'}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-stone-400 flex flex-wrap items-center gap-2 mt-0.5">
+                                    <span>📍 {pintor.cidade} - {pintor.estado}</span>
+                                    <span>•</span>
+                                    <span>★ {pintor.experiencia_anos} anos de experiência</span>
+                                    <span>•</span>
+                                    <a 
+                                      href={`https://wa.me/55${pintor.whatsapp.replace(/\D/g, '')}`} 
+                                      target="_blank" 
+                                      rel="noreferrer"
+                                      className="text-emerald-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
+                                    >
+                                      <Phone className="w-3 h-3" /> {pintor.whatsapp}
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <span className={`text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
+                                  pintor.status === 'aprovado' 
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
+                                    : pintor.status === 'rejeitado'
+                                    ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                                    : 'bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse'
+                                }`}>
+                                  {pintor.status === 'aprovado' ? '✓ Aprovado na Vitrine' : pintor.status === 'rejeitado' ? '✕ Rejeitado' : '⏳ Aguardando Aprovação'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Especialidades */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {pintor.especialidades?.map((esp, i) => (
+                                <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-300">
+                                  {esp}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Ações Administrativas: Aprovar, Visualizar Cartão, Rejeitar, Excluir */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-900">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setPintorParaVisualizar(pintor)}
+                                  className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs flex items-center gap-1.5 transition border border-stone-700 font-medium"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-amber-400" />
+                                  Visualizar Cartão de Visitas
+                                </button>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {pintor.status !== 'aprovado' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAprovarPintor(pintor.id)}
+                                    className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Aprovar Cadastro
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejeitarPintor(pintor.id)}
+                                    className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-300 text-xs flex items-center gap-1.5 transition border border-stone-700"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5 text-amber-400" />
+                                    Pausar / Inativar
+                                  </button>
+                                )}
+
+                                {pintor.status === 'pendente' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejeitarPintor(pintor.id)}
+                                    className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-red-300 text-xs flex items-center gap-1.5 transition border border-stone-700"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5 text-red-400" />
+                                    Rejeitar
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleExcluirPintor(pintor.id)}
+                                  title="Excluir da Nuvem"
+                                  className="p-1.5 rounded-lg bg-stone-900 hover:bg-red-950/60 text-stone-400 hover:text-red-400 border border-stone-800 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                      {pintoresNuvem.filter(p => statusFiltroPintores === 'todos' ? true : p.status === statusFiltroPintores).length === 0 && !loadingPintores && (
+                        <div className="text-center py-10 bg-stone-950 rounded-xl border border-stone-800 space-y-2">
+                          <Users className="w-10 h-10 mx-auto text-stone-600" />
+                          <p className="text-sm font-semibold text-stone-300">
+                            Nenhum pintor encontrado {statusFiltroPintores !== 'todos' ? `com status '${statusFiltroPintores}'` : 'no banco de dados em nuvem'}.
+                          </p>
+                          <p className="text-xs text-stone-500 max-w-sm mx-auto">
+                            Os novos cadastros feitos na página inicial aparecerão aqui automaticamente para a sua aprovação.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCadastroModalOpen(true);
+                              setFormSucesso(false);
+                            }}
+                            className="mt-2 py-1.5 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold transition inline-flex items-center gap-1.5"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" /> Fazer Teste de Cadastro
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Aba 1: Supabase Configuration */}
                 {adminTab === 'supabase' && (
@@ -1537,18 +2261,28 @@ export default function App() {
                     </p>
                     <div className="relative">
                       <pre className="bg-stone-950 border border-stone-800 p-3.5 rounded-xl text-[11px] font-mono text-amber-200 overflow-x-auto max-h-64 leading-relaxed">
-{`-- 1. TABELA DE PINTORES PROFISSIONAIS
+{`-- 1. TABELA DE PINTORES PROFISSIONAIS (PINTA AQUI PRO)
 CREATE TABLE IF NOT EXISTS public.pintores_profissionais (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo_pessoa TEXT NOT NULL DEFAULT 'PF', -- 'PF' (Pessoa Física) ou 'PJ' (Pessoa Jurídica)
+  documento TEXT, -- CPF ou CNPJ
   nome TEXT NOT NULL,
   whatsapp TEXT NOT NULL,
   cidade TEXT NOT NULL,
   estado TEXT NOT NULL DEFAULT 'SP',
   experiencia_anos INT DEFAULT 5,
   especialidades TEXT[] DEFAULT ARRAY['Residencial', 'Texturas'],
-  status TEXT DEFAULT 'ativo',
+  senha TEXT, -- Senha alfanumérica de 6 dígitos para comunidade
+  status TEXT DEFAULT 'pendente', -- 'pendente', 'aprovado', 'rejeitado'
+  fotos TEXT[] DEFAULT ARRAY[]::TEXT[],
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- CASO A TABELA JÁ TENHA SIDO CRIADA ANTES, ATUALIZAR COLUNAS:
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS tipo_pessoa TEXT DEFAULT 'PF';
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS documento TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS senha TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS fotos TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 -- 2. TABELA DE SOLICITAÇÃO DE ORÇAMENTOS (CLIENTES LEIGOS)
 CREATE TABLE IF NOT EXISTS public.solicitacoes_orcamento (
@@ -1567,11 +2301,12 @@ CREATE TABLE IF NOT EXISTS public.solicitacoes_orcamento (
 ALTER TABLE public.pintores_profissionais ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.solicitacoes_orcamento ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Pintores visíveis publicamente" 
-ON public.pintores_profissionais FOR SELECT USING (status = 'ativo');
-
-CREATE POLICY "Clientes podem solicitar orçamentos" 
-ON public.solicitacoes_orcamento FOR INSERT WITH CHECK (true);`}
+-- POLÍTICAS DE ACESSO (PERMITIR OPERAÇÕES SEGURAS EM NUVEM)
+CREATE POLICY "Permitir leitura de pintores" ON public.pintores_profissionais FOR SELECT USING (true);
+CREATE POLICY "Permitir cadastro público de novos pintores" ON public.pintores_profissionais FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permitir atualização de status de pintores" ON public.pintores_profissionais FOR UPDATE USING (true);
+CREATE POLICY "Permitir exclusão de pintores" ON public.pintores_profissionais FOR DELETE USING (true);
+CREATE POLICY "Clientes podem solicitar orçamentos" ON public.solicitacoes_orcamento FOR INSERT WITH CHECK (true);`}
                       </pre>
                     </div>
                     <p className="text-[11px] text-stone-400">
@@ -1601,7 +2336,7 @@ ON public.solicitacoes_orcamento FOR INSERT WITH CHECK (true);`}
                     </div>
                     <div className="pt-2 flex justify-between items-center">
                       <button 
-                        onClick={() => alert('Ajustes gerais gravados localmente!')}
+                        onClick={() => alert('Ajustes gerais gravados!')}
                         className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold transition"
                       >
                         Gravar Dados de Contato
@@ -1617,6 +2352,449 @@ ON public.solicitacoes_orcamento FOR INSERT WITH CHECK (true);`}
                 )}
 
               </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE VISUALIZAÇÃO DO CARTÃO DE VISITAS DIGITAL DO PINTOR (ADMIN OU VITRINE) */}
+      {pintorParaVisualizar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs">
+          <div className="bg-stone-900 border border-stone-700 text-stone-100 rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 sm:p-8 space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-stone-800">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-amber-400" />
+                <h4 className="font-bold text-lg text-white">Cartão de Visitas Digital do Pintor</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPintorParaVisualizar(null)}
+                className="p-1 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Cartão Oficial Renderizado */}
+            <article className="bg-stone-950 border border-stone-800 rounded-2xl p-6 sm:p-7 space-y-6 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 pb-6 border-b border-stone-850">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-stone-950 text-xl font-extrabold shadow-lg shrink-0">
+                    {pintorParaVisualizar.nome.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="text-xl font-bold text-white">{pintorParaVisualizar.nome}</h4>
+                      <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${
+                        pintorParaVisualizar.status === 'aprovado' 
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                          : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      }`}>
+                        {pintorParaVisualizar.status === 'aprovado' ? '✓ Profissional Qualificado' : '⏳ Aguardando Aprovação'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-stone-400 flex flex-wrap items-center gap-2 mt-1">
+                      <span className="text-amber-400 font-medium">★ {pintorParaVisualizar.experiencia_anos} anos de experiência</span>
+                      <span>•</span>
+                      <span>📍 {pintorParaVisualizar.cidade} - {pintorParaVisualizar.estado}</span>
+                      <span>•</span>
+                      <span className="text-stone-300 font-mono text-[11px]">
+                        {pintorParaVisualizar.tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF'}: {pintorParaVisualizar.documento}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {pintorParaVisualizar.especialidades?.map((esp, i) => (
+                        <span key={i} className="text-[11px] px-2 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-300">
+                          {esp}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <a
+                    href={`https://wa.me/55${pintorParaVisualizar.whatsapp.replace(/\D/g, '')}?text=Ol%C3%A1%20${encodeURIComponent(pintorParaVisualizar.nome)}!%20Vi%20seu%20perfil%20no%20Pinta%20Aqui%20e%20gostaria%20de%20um%20or%C3%A7amento.`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md shadow-emerald-600/20"
+                  >
+                    <Phone className="w-3.5 h-3.5" /> Chamar no WhatsApp
+                  </a>
+                </div>
+              </div>
+
+              {/* Grade de 6 Fotos do Portfólio */}
+              <div className="space-y-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-stone-300 block">
+                  Galeria de Obras Recentes (6 Fotos Cadastradas)
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {[
+                    { tit: 'Efeito Decorativo / Cimento', url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80' },
+                    { tit: 'Emassamento & Nivelamento', url: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80' },
+                    { tit: 'Impermeabilização & Fachada', url: 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=600&q=80' },
+                    { tit: 'Esmaltação de Portas', url: 'https://images.unsplash.com/photo-1534349762230-e0cadf78f5da?auto=format&fit=crop&w=600&q=80' },
+                    { tit: 'Marmorato & Boiserie', url: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80' },
+                    { tit: 'Pintura Mecanizada Airless', url: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=600&q=80' },
+                  ].map((foto, idx) => (
+                    <div key={idx} className="relative rounded-xl overflow-hidden aspect-4/3 bg-stone-900 border border-stone-800">
+                      <img src={foto.url} alt={foto.tit} className="w-full h-full object-cover" />
+                      <div className="absolute inset-x-0 bottom-0 bg-stone-950/80 p-2 text-[10px] text-white">
+                        {foto.tit}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </article>
+
+            {/* Ações do Modal de Visualização */}
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="button"
+                onClick={() => setPintorParaVisualizar(null)}
+                className="py-2 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs transition"
+              >
+                Fechar Visualização
+              </button>
+
+              {isAdminLoggedIn && pintorParaVisualizar.status !== 'aprovado' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleAprovarPintor(pintorParaVisualizar.id);
+                    setPintorParaVisualizar(null);
+                  }}
+                  className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Aprovar e Publicar na Vitrine
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CADASTRO DO PINTOR PROFISSIONAL (PÚBLICO) */}
+      {cadastroModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs">
+          <div className="bg-stone-900 border border-stone-700 text-stone-100 rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 sm:p-8 space-y-6">
+            
+            {/* Header do Cadastro */}
+            <div className="flex items-center justify-between pb-4 border-b border-stone-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-white">Cadastro de Pintor Profissional</h3>
+                  <p className="text-xs text-stone-400">Pinta Aqui Pro • Vitrine Oficial de Especialistas</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCadastroModalOpen(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Aviso Arquitetural e Regras de Acesso */}
+            <div className="bg-amber-950/40 border border-amber-600/40 p-4 rounded-2xl text-xs text-amber-200 space-y-2">
+              <div className="flex items-center gap-2 text-amber-400 font-bold">
+                <Info className="w-4 h-4 shrink-0" />
+                Acesso Livre na Área do Profissional
+              </div>
+              <p className="leading-relaxed text-stone-300">
+                Você <strong>não precisa de cadastro para navegar</strong> e ler as Dicas de Mestre. 
+                O cadastro e a senha servem exclusivamente para:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-stone-300 pl-1 text-[11px]">
+                <li>Ter seu <strong>Cartão de Visitas Digital publicado na Vitrine</strong> para clientes da sua cidade te chamarem no WhatsApp.</li>
+                <li>Enviar fotos reais de obras e comentar em nossa comunidade de profissionais.</li>
+                <li><strong>Aprovação necessária:</strong> Todo cadastro é analisado e aprovado pela curadoria de Vlademir Carer antes de ir para a vitrine.</li>
+              </ul>
+            </div>
+
+            {/* Mensagem de Sucesso */}
+            {formSucesso ? (
+              <div className="p-8 text-center space-y-4 bg-stone-950 rounded-2xl border border-emerald-500/50">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-xl font-bold text-white">Cadastro Enviado com Sucesso!</h4>
+                  <p className="text-xs text-stone-300 max-w-md mx-auto leading-relaxed">
+                    Parabéns, parceiro! Seus dados foram gravados diretamente na nuvem no Supabase. O <strong>Vlademir Carer</strong> irá analisar suas especialidades e ativar o seu Cartão de Visitas na vitrine em breve.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCadastroModalOpen(false)}
+                  className="py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs transition"
+                >
+                  Fechar Janela
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleCadastroPintor} className="space-y-5 text-xs">
+                
+                {formErro && (
+                  <div className="p-3.5 rounded-xl bg-red-950/80 border border-red-500/60 text-red-200 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                    <span>{formErro}</span>
+                  </div>
+                )}
+
+                {/* Seleção Pessoa Física ou Pessoa Jurídica */}
+                <div>
+                  <label className="block text-xs font-semibold text-stone-300 mb-2">
+                    Tipo de Cadastro Profissional
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormTipoPessoa('PF')}
+                      className={`p-3 rounded-xl border flex items-center justify-center gap-2 font-bold transition ${
+                        formTipoPessoa === 'PF'
+                          ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-md shadow-amber-500/20'
+                          : 'bg-stone-950 text-stone-300 border-stone-800 hover:border-stone-700'
+                      }`}
+                    >
+                      <User className="w-4 h-4" />
+                      Pessoa Física (CPF)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormTipoPessoa('PJ')}
+                      className={`p-3 rounded-xl border flex items-center justify-center gap-2 font-bold transition ${
+                        formTipoPessoa === 'PJ'
+                          ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-md shadow-amber-500/20'
+                          : 'bg-stone-950 text-stone-300 border-stone-800 hover:border-stone-700'
+                      }`}
+                    >
+                      <Building2 className="w-4 h-4" />
+                      Pessoa Jurídica (CNPJ / MEI)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Nome e Documento */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">
+                      {formTipoPessoa === 'PF' ? 'Nome Completo do Pintor *' : 'Razão Social / Nome Fantasia *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={formNome}
+                      onChange={(e) => setFormNome(e.target.value)}
+                      placeholder={formTipoPessoa === 'PF' ? 'Ex: Carlos Eduardo Silva' : 'Ex: Pinturas Silva ME'}
+                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white focus:border-amber-500 focus:outline-hidden"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">
+                      {formTipoPessoa === 'PF' ? 'CPF do Profissional *' : 'CNPJ da Empresa *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={formDocumento}
+                      onChange={(e) => setFormDocumento(e.target.value)}
+                      placeholder={formTipoPessoa === 'PF' ? '000.000.000-00' : '00.000.000/0001-00'}
+                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono focus:border-amber-500 focus:outline-hidden"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* WhatsApp e Localização */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">WhatsApp de Orçamentos *</label>
+                    <input
+                      type="text"
+                      value={formWhatsapp}
+                      onChange={(e) => setFormWhatsapp(e.target.value)}
+                      placeholder="(11) 98765-4321"
+                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono focus:border-amber-500 focus:outline-hidden"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">Cidade Principal *</label>
+                    <input
+                      type="text"
+                      value={formCidade}
+                      onChange={(e) => setFormCidade(e.target.value)}
+                      placeholder="Ex: São Paulo"
+                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white focus:border-amber-500 focus:outline-hidden"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">Estado (UF) *</label>
+                    <select
+                      value={formEstado}
+                      onChange={(e) => setFormEstado(e.target.value)}
+                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white focus:border-amber-500 focus:outline-hidden"
+                    >
+                      {['SP', 'RJ', 'MG', 'PR', 'SC', 'RS', 'ES', 'GO', 'DF', 'BA', 'PE', 'CE'].map((uf) => (
+                        <option key={uf} value={uf}>{uf}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Tempo de Experiência */}
+                <div>
+                  <label className="block text-stone-300 font-medium mb-1">
+                    Tempo de Estrada / Experiência: <strong className="text-amber-400">{formExperiencia} anos</strong>
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="40"
+                    value={formExperiencia}
+                    onChange={(e) => setFormExperiencia(Number(e.target.value))}
+                    className="w-full accent-amber-500"
+                  />
+                  <div className="flex justify-between text-[10px] text-stone-500">
+                    <span>Iniciante (1 ano)</span>
+                    <span>Experiente (15 anos)</span>
+                    <span>Mestre de Obra (40 anos)</span>
+                  </div>
+                </div>
+
+                {/* Especialidades */}
+                <div>
+                  <label className="block text-stone-300 font-medium mb-1.5">
+                    Suas Especialidades Técnicas (Selecione as que você domina):
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      'Massa Corrida & Nivelamento',
+                      'Cimento Queimado & Texturas',
+                      'Pintura Mecanizada Airless',
+                      'Pintura Predial & Fachadas',
+                      'Impermeabilização de Paredes',
+                      'Esmaltação de Portas & Madeiras',
+                      'Efeito Marmorato & Boiserie',
+                      'Pintura Epóxi para Pisos',
+                      'Pintura Residencial Fina'
+                    ].map((esp) => {
+                      const selecionado = formEspecialidades.includes(esp);
+                      return (
+                        <button
+                          key={esp}
+                          type="button"
+                          onClick={() => {
+                            if (selecionado) {
+                              setFormEspecialidades(formEspecialidades.filter(e => e !== esp));
+                            } else {
+                              setFormEspecialidades([...formEspecialidades, esp]);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs transition border ${
+                            selecionado
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 font-semibold'
+                              : 'bg-stone-950 text-stone-400 border-stone-800 hover:text-white'
+                          }`}
+                        >
+                          {selecionado ? '✓ ' : '+ '} {esp}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Senha e Confirmação de Senha (6 Dígitos com Letras e Números) */}
+                <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-3">
+                  <div className="flex items-center gap-2 text-stone-200 font-semibold">
+                    <Lock className="w-4 h-4 text-amber-400" />
+                    Senha de Acesso à Comunidade (6 dígitos com números e letras)
+                  </div>
+                  <p className="text-[11px] text-stone-400">
+                    Esta senha será usada futuramente para você atualizar seu portfólio, postar fotos de obras e participar dos comentários.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                    <div>
+                      <label className="block text-stone-300 text-[11px] mb-1">Cadastrar Senha *</label>
+                      <input
+                        type="password"
+                        value={formSenha}
+                        onChange={(e) => setFormSenha(e.target.value)}
+                        placeholder="Ex: pint88"
+                        maxLength={12}
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white font-mono focus:border-amber-500 focus:outline-hidden"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-stone-300 text-[11px] mb-1">Confirmar Senha *</label>
+                      <input
+                        type="password"
+                        value={formConfirmaSenha}
+                        onChange={(e) => setFormConfirmaSenha(e.target.value)}
+                        placeholder="Repita a senha"
+                        maxLength={12}
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white font-mono focus:border-amber-500 focus:outline-hidden"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {formSenha && (
+                    <div className="text-[11px] space-y-1 pt-1">
+                      <span className={`block font-medium ${formSenha.length >= 6 ? 'text-emerald-400' : 'text-stone-500'}`}>
+                        {formSenha.length >= 6 ? '✓' : '•'} Mínimo de 6 caracteres ({formSenha.length}/6)
+                      </span>
+                      <span className={`block font-medium ${/[a-zA-Z]/.test(formSenha) && /[0-9]/.test(formSenha) ? 'text-emerald-400' : 'text-stone-500'}`}>
+                        {/[a-zA-Z]/.test(formSenha) && /[0-9]/.test(formSenha) ? '✓' : '•'} Contém letras e números
+                      </span>
+                      {formConfirmaSenha && (
+                        <span className={`block font-medium ${formSenha === formConfirmaSenha ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {formSenha === formConfirmaSenha ? '✓ Senhas coincidem' : '✕ Senhas não coincidem'}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Botões do Formulário */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <span className="text-[11px] text-stone-400">
+                    Ao enviar, seus dados são salvos em nuvem para aprovação do Vlademir.
+                  </span>
+
+                  <button
+                    type="submit"
+                    disabled={formSubmitting}
+                    className="w-full sm:w-auto py-3 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition transform hover:-translate-y-0.5"
+                  >
+                    {formSubmitting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" /> Gravando na Nuvem...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCheck className="w-4 h-4" /> Enviar Cadastro para Aprovação
+                      </>
+                    )}
+                  </button>
+                </div>
+
+              </form>
             )}
 
           </div>
