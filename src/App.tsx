@@ -33,8 +33,13 @@ import {
   Menu,
   FileCode,
   Shield,
-  Palette
+  Palette,
+  Cloud,
+  Zap,
+  Activity,
+  RefreshCw
 } from 'lucide-react';
+import { testSupabaseCloudConnection, ConnectionTestResult } from './lib/supabase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'geral' | 'desvendando' | 'tipos' | 'texturas' | 'ferramentas' | 'patologias'>('geral');
@@ -55,6 +60,10 @@ export default function App() {
   const [supabaseServiceKey, setSupabaseServiceKey] = useState('');
   const [adminTab, setAdminTab] = useState<'supabase' | 'schema' | 'geral'>('supabase');
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Supabase Cloud Connection Test State
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
   // Load saved credentials from localStorage
   useEffect(() => {
@@ -92,6 +101,7 @@ export default function App() {
     setIsAdminLoggedIn(false);
     localStorage.removeItem('pintaaqui_admin_logged');
     setAdminModalOpen(false);
+    setTestResult(null);
   };
 
   const handleSaveSupabaseConfig = (e: React.FormEvent) => {
@@ -101,6 +111,23 @@ export default function App() {
     localStorage.setItem('pintaaqui_supabase_service', supabaseServiceKey.trim());
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleTestConnection = async () => {
+    setIsTestingConnection(true);
+    setTestResult(null);
+    try {
+      const result = await testSupabaseCloudConnection(supabaseUrl, supabaseAnonKey);
+      setTestResult(result);
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: 'Erro inesperado ao tentar conectar com a nuvem.',
+        details: err?.message || 'Falha de rede.',
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
   };
 
   const menuItems = [
@@ -1375,25 +1402,33 @@ export default function App() {
                 {/* Aba 1: Supabase Configuration */}
                 {adminTab === 'supabase' && (
                   <form onSubmit={handleSaveSupabaseConfig} className="space-y-4">
-                    <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 text-xs text-stone-300 space-y-2">
-                      <div className="flex items-center gap-2 text-amber-400 font-bold">
-                        <Database className="w-4 h-4" /> Conexão do Projeto Supabase
+                    {/* Alerta de Diretriz Absoluta: 100% em Nuvem */}
+                    <div className="bg-amber-950/40 border border-amber-600/40 p-4 rounded-xl text-xs text-amber-200 space-y-1.5">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                        <Cloud className="w-4 h-4 text-amber-400" />
+                        Diretriz Arquitetural: 100% em Nuvem (Sem Gravação Local)
                       </div>
-                      <p>
-                        Insira aqui as credenciais do seu projeto Supabase criado no painel da Supabase (<code className="text-amber-300">https://app.supabase.com</code>). Os dados ficam armazenados com segurança.
+                      <p className="leading-relaxed text-stone-300">
+                        O <strong>Pinta Aqui</strong> opera sob política estrita de persistência exclusivamente em nuvem. 
+                        Nenhum dado de pintores, contatos ou solicitações de orçamento é gravado localmente ou em memória transitória; 
+                        todas as transações vão direto para as tabelas do PostgreSQL gerenciado pelo Supabase.
                       </p>
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-stone-300 mb-1">
-                        Project URL do Supabase
+                        Project URL do Supabase (Cloud)
                       </label>
                       <input 
                         type="url"
                         value={supabaseUrl}
-                        onChange={(e) => setSupabaseUrl(e.target.value)}
+                        onChange={(e) => {
+                          setSupabaseUrl(e.target.value);
+                          setTestResult(null);
+                        }}
                         placeholder="https://xyzabcdefg.supabase.co"
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
+                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
+                        required
                       />
                     </div>
 
@@ -1404,9 +1439,13 @@ export default function App() {
                       <input 
                         type="password"
                         value={supabaseAnonKey}
-                        onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                        onChange={(e) => {
+                          setSupabaseAnonKey(e.target.value);
+                          setTestResult(null);
+                        }}
                         placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
+                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
+                        required
                       />
                     </div>
 
@@ -1419,29 +1458,82 @@ export default function App() {
                         value={supabaseServiceKey}
                         onChange={(e) => setSupabaseServiceKey(e.target.value)}
                         placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
+                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
                       />
                     </div>
+
+                    {/* Botão de Teste de Conexão em Nuvem */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestConnection}
+                        disabled={isTestingConnection || !supabaseUrl || !supabaseAnonKey}
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-600/20"
+                      >
+                        {isTestingConnection ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                            <span>Consultando servidores Supabase na nuvem...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4 text-stone-950" />
+                            <span>Testar Conexão do Banco de Dados (Nuvem)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Resultado do Teste de Conexão */}
+                    {testResult && (
+                      <div className={`p-4 rounded-xl border text-xs space-y-2 transition-all ${
+                        testResult.success 
+                          ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-200' 
+                          : 'bg-red-950/80 border-red-500/60 text-red-200'
+                      }`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 font-bold">
+                            {testResult.success ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            ) : (
+                              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                            )}
+                            <span className="text-sm">{testResult.message}</span>
+                          </div>
+                          {testResult.latencyMs !== undefined && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-900/60 font-mono text-stone-300">
+                              Latência: {testResult.latencyMs}ms
+                            </span>
+                          )}
+                        </div>
+
+                        {testResult.details && (
+                          <p className="text-xs text-stone-300 pl-6 leading-relaxed">
+                            {testResult.details}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {saveSuccess && (
                       <div className="bg-emerald-950 border border-emerald-500/50 text-emerald-200 text-xs p-3 rounded-xl flex items-center gap-2">
                         <Check className="w-4 h-4 text-emerald-400" />
-                        <span>Configurações do Supabase salvas com sucesso!</span>
+                        <span>Configurações do Supabase salvas para a aplicação em nuvem!</span>
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between pt-2">
+                    <div className="flex items-center justify-between pt-2 border-t border-stone-800">
                       <button
                         type="submit"
-                        className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold text-xs flex items-center gap-1.5 transition"
+                        className="py-2 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-100 font-semibold text-xs flex items-center gap-1.5 transition border border-stone-700"
                       >
-                        <Save className="w-4 h-4" /> Salvar Configurações
+                        <Save className="w-4 h-4 text-amber-400" /> Salvar Credenciais
                       </button>
 
                       <button
                         type="button"
                         onClick={handleAdminLogout}
-                        className="py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs flex items-center gap-1.5 transition"
+                        className="py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs flex items-center gap-1.5 transition border border-stone-700"
                       >
                         <LogOut className="w-4 h-4 text-red-400" /> Encerrar Sessão
                       </button>
