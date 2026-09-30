@@ -75,6 +75,7 @@ import {
   carregarFotoIdealizadorNuvem,
   restaurarFotoIdealizadorNuvem
 } from './lib/supabase';
+import LogoPintaAqui from './components/LogoPintaAqui';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'geral' | 'desvendando' | 'tipos' | 'texturas' | 'ferramentas' | 'patologias' | 'profissional'>('geral');
@@ -721,28 +722,22 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
   );
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-800 font-sans">
-      {/* Header Topo com Autoridade de Vlademir Carer e Acesso Administrativo */}
-      <header className="bg-stone-900 text-stone-100 border-b border-amber-600/30 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
+    <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] font-sans antialiased selection:bg-orange-500/20 selection:text-orange-950">
+      {/* Header Topo Moderno e Limpo com Fundo Translúcido e Backdrop Blur */}
+      <header className="bg-white/95 backdrop-blur-md text-slate-800 border-b border-slate-200/90 sticky top-0 z-40 shadow-xs transition-all">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           
-          {/* Logo e Nome */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center font-bold text-white shadow-md text-xl tracking-wider">
-              P
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-bold tracking-tight text-white">Pinta Aqui</span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30">
-                  Por Vlademir Carer
-                </span>
-              </div>
-            </div>
+          {/* Logo Oficial Pinta Aqui */}
+          <div className="shrink-0 flex items-center">
+            <LogoPintaAqui 
+              onClick={() => setActiveTab('geral')}
+              withPill={false}
+              size="md"
+            />
           </div>
 
-          {/* Menus Desktop (Sem números, design moderno e limpo) */}
-          <nav className="hidden lg:flex items-center gap-1.5 bg-stone-950/60 p-1.5 rounded-2xl border border-stone-800/80">
+          {/* Menus Desktop (Design moderno e limpo em pílula sutil com cantos suaves) */}
+          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/70">
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -750,39 +745,47 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-amber-500 text-stone-950 font-bold shadow-md shadow-amber-500/20'
-                      : 'text-stone-300 hover:text-white hover:bg-stone-800/60'
+                      ? 'bg-white text-orange-600 font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-stone-950' : 'text-amber-400'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-orange-600' : 'text-slate-400'}`} />
                   {item.label}
                 </button>
               );
             })}
           </nav>
 
-          {/* Canto Superior Direito: Acesso Administrativo (Cadeado) + Menu Mobile */}
+          {/* Canto Superior Direito: Ação Rápida de Orçamento & Acesso Administrativo */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('profissional')}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-xs hover:shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Achar Pintor</span>
+            </button>
+
             <button
               onClick={() => setAdminModalOpen(true)}
               title={isAdminLoggedIn ? "Painel Administrativo (Conectado)" : "Acesso Administrativo"}
-              className={`p-2 rounded-xl transition-all border flex items-center gap-1.5 text-xs font-medium ${
+              className={`p-2 rounded-xl transition-all border flex items-center gap-1.5 text-xs font-medium cursor-pointer ${
                 isAdminLoggedIn
-                  ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/60 shadow-xs'
-                  : 'bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white border-stone-700 hover:border-amber-500/50'
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 shadow-2xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border-slate-200'
               }`}
             >
               {isAdminLoggedIn ? (
                 <>
-                  <Unlock className="w-4 h-4 text-emerald-400" />
-                  <span className="hidden sm:inline text-xs text-emerald-300">Admin</span>
+                  <Unlock className="w-4 h-4 text-emerald-600" />
+                  <span className="hidden sm:inline text-xs font-semibold text-emerald-700">Admin</span>
                 </>
               ) : (
                 <>
-                  <Lock className="w-4 h-4 text-amber-400" />
-                  <span className="hidden sm:inline text-xs text-stone-300">Painel</span>
+                  <Lock className="w-4 h-4 text-slate-500" />
+                  <span className="hidden sm:inline text-xs font-medium text-slate-600">Painel</span>
                 </>
               )}
             </button>
@@ -790,18 +793,18 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
             {/* Botão Menu Mobile */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
+              className="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 cursor-pointer"
               aria-label="Abrir menu de navegação"
             >
-              {mobileMenuOpen ? <X className="w-5 h-5 text-amber-400" /> : <Menu className="w-5 h-5 text-stone-300" />}
+              {mobileMenuOpen ? <X className="w-5 h-5 text-orange-600" /> : <Menu className="w-5 h-5 text-slate-700" />}
             </button>
           </div>
         </div>
 
         {/* Menu Mobile Retrátil */}
         {mobileMenuOpen && (
-          <div className="lg:hidden border-t border-stone-800 bg-stone-950/95 backdrop-blur-md px-4 py-3 space-y-1">
-            <p className="text-[10px] uppercase font-bold text-stone-400 tracking-wider mb-2 px-2">
+          <div className="lg:hidden border-t border-slate-200 bg-white/98 backdrop-blur-md px-4 py-3 space-y-1 shadow-lg">
+            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 px-2">
               Seções do Pinta Aqui
             </p>
             {menuItems.map((item) => {
@@ -814,13 +817,13 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     setActiveTab(item.id);
                     setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-amber-500 text-stone-950 font-bold'
-                      : 'text-stone-300 hover:bg-stone-800 hover:text-white'
+                      ? 'bg-orange-50 text-orange-700 font-bold border border-orange-200'
+                      : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-stone-950' : 'text-amber-400'}`} />
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-orange-600' : 'text-slate-400'}`} />
                   {item.label}
                 </button>
               );
@@ -829,7 +832,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         )}
 
         {/* Barra de Menus Horizontal com Scroll Suave para Tablets & Celulares */}
-        <div className="lg:hidden border-t border-stone-800/80 bg-stone-900/90 overflow-x-auto no-scrollbar px-3 py-2 flex items-center gap-2">
+        <div className="lg:hidden border-t border-slate-200/80 bg-slate-50/90 overflow-x-auto no-scrollbar px-3 py-2 flex items-center gap-2">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -837,13 +840,13 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
                   isActive
-                    ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
-                    : 'text-stone-300 bg-stone-800/60 hover:bg-stone-800'
+                    ? 'bg-orange-600 text-white font-bold shadow-2xs'
+                    : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-stone-950' : 'text-amber-400'}`} />
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
                 {item.label}
               </button>
             );
@@ -851,36 +854,36 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         </div>
       </header>
 
-      {/* Hero da Seção Leigos */}
-      <section className="bg-gradient-to-b from-stone-900 via-stone-850 to-stone-900 text-stone-100 py-8 sm:py-9 px-4 sm:px-6 relative overflow-hidden border-b border-stone-800">
-        <div className="max-w-5xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs font-medium">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            Guia Completo para Você Mesmo Pintar Sem Mistério
+      {/* Hero Moderno e Iluminado: Sensação de Parede Recém-Emassada e Limpa */}
+      <section className="bg-gradient-to-b from-white via-slate-50 to-slate-100/60 text-slate-900 py-12 sm:py-16 px-4 sm:px-6 relative overflow-hidden border-b border-slate-200/80">
+        <div className="max-w-5xl mx-auto space-y-5">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-orange-50 border border-orange-200/80 text-orange-700 text-xs font-semibold">
+            <Sparkles className="w-3.5 h-3.5 text-orange-600" />
+            Guia Completo para Você Mesmo Pintar ou Contratar com Segurança
           </div>
 
-          <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Pintura Fácil e Descomplicada
+          <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight leading-tight">
+            Pintura Fácil, Descomplicada e Sem Erro
           </h1>
 
-          <div className="border-l-2 border-amber-500/60 pl-3.5 py-0.5">
-            <p className="text-sm sm:text-base text-stone-300 max-w-3xl leading-relaxed font-normal">
-              "Pintar a própria casa não é um bicho de sete cabeças: e pode ser ate uma terapia, revitalizante e econômica quando você sabe o caminho das pedras. Deixe que eu te guio passo a passo."
+          <div className="border-l-4 border-orange-500 pl-4 py-1">
+            <p className="text-sm sm:text-base text-slate-600 max-w-3xl leading-relaxed font-normal">
+              "Pintar a própria casa não é um bicho de sete cabeças: e pode ser até uma terapia, revitalizante e econômica quando você sabe o caminho das pedras. Deixe que eu te guio passo a passo."
             </p>
           </div>
 
-          <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-stone-200">
-            <div className="bg-stone-900/80 backdrop-blur px-4 py-3 rounded-xl border border-stone-800 hover:border-stone-700 transition">
-              <span className="block text-xl sm:text-2xl font-bold text-amber-400">+30</span>
-              <span className="text-xs text-stone-400">Anos de experiência prática</span>
+          <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-800">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
+              <span className="block text-2xl sm:text-3xl font-black text-orange-600">+30</span>
+              <span className="text-xs text-slate-600 font-medium">Anos de experiência técnica</span>
             </div>
-            <div className="bg-stone-900/80 backdrop-blur px-4 py-3 rounded-xl border border-stone-800 hover:border-stone-700 transition">
-              <span className="block text-xl sm:text-2xl font-bold text-amber-400">15</span>
-              <span className="text-xs text-stone-400">Patologias explicadas & resolvidas</span>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
+              <span className="block text-2xl sm:text-3xl font-black text-[#004B8D]">15</span>
+              <span className="text-xs text-slate-600 font-medium">Patologias explicadas & resolvidas</span>
             </div>
-            <div className="bg-stone-900/80 backdrop-blur px-4 py-3 rounded-xl border border-stone-800 hover:border-stone-700 transition">
-              <span className="block text-xl sm:text-2xl font-bold text-amber-400">Zero</span>
-              <span className="text-xs text-stone-400">Desperdício de tinta e dinheiro</span>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
+              <span className="block text-2xl sm:text-3xl font-black text-emerald-600">Zero</span>
+              <span className="text-xs text-slate-600 font-medium">Desperdício de tinta e dinheiro</span>
             </div>
           </div>
         </div>
@@ -892,82 +895,95 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         {/* Resumo ou Abas */}
         {activeTab === 'geral' && (
           <div className="space-y-12">
-            <div className="bg-amber-50 rounded-2xl p-6 sm:p-8 border border-amber-200 text-stone-800 shadow-sm">
-              <h2 className="text-2xl font-bold text-stone-900 flex items-center gap-2">
-                <BookOpen className="w-6 h-6 text-amber-700" />
-                Como navegar neste guia do Pinta Aqui
-              </h2>
-              <p className="mt-3 text-stone-700 leading-relaxed text-sm sm:text-base">
-                Desenvolvi este manual especialmente para você que nunca segurou um rolo na mão, ou para quem já tentou pintar e teve dor de cabeça com bolhas, marcas e cheiro forte. Ele está dividido em <strong>5 pilares essenciais</strong>:
-              </p>
+            <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/80 text-slate-800 shadow-xs">
+              <div className="max-w-3xl">
+                <span className="text-xs font-bold uppercase tracking-wider text-orange-600">Manual Prático de Pintura</span>
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 mt-1 flex items-center gap-2.5">
+                  <BookOpen className="w-7 h-7 text-orange-600 shrink-0" />
+                  Como navegar neste guia do Pinta Aqui
+                </h2>
+                <p className="mt-3 text-slate-600 leading-relaxed text-sm sm:text-base">
+                  Desenvolvi este manual especialmente para você que nunca segurou um rolo na mão, ou para quem já tentou pintar e teve dor de cabeça com bolhas, marcas e cheiro forte. Ele está dividido em <strong>5 pilares essenciais</strong>:
+                </p>
+              </div>
               
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 <div 
                   onClick={() => setActiveTab('desvendando')}
-                  className="bg-white p-5 rounded-xl border border-stone-200 hover:border-amber-500 hover:shadow-md cursor-pointer transition-all group"
+                  className="bg-slate-50/80 hover:bg-white p-6 rounded-2xl border border-slate-200/80 hover:border-orange-500/60 hover:shadow-md cursor-pointer transition-all group card-hover flex flex-col justify-between"
                 >
-                  <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold mb-3">
-                    <BookOpen className="w-5 h-5 text-amber-700" />
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-orange-100/80 text-orange-700 flex items-center justify-center font-bold mb-4 group-hover:scale-105 transition-transform">
+                      <BookOpen className="w-6 h-6 text-orange-600" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 text-base group-hover:text-orange-600 transition">Desvendando a Pintura</h3>
+                    <p className="text-xs sm:text-sm text-slate-600 mt-1.5 leading-relaxed">O que tem dentro da lata, rendimento real e como não cair no golpe da tinta fraca.</p>
                   </div>
-                  <h3 className="font-bold text-stone-900 group-hover:text-amber-700 transition">Desvendando a Pintura</h3>
-                  <p className="text-xs text-stone-600 mt-1">O que tem dentro da lata, rendimento real e como não cair no golpe da tinta fraca.</p>
-                  <span className="inline-flex items-center text-xs font-semibold text-amber-600 mt-3 group-hover:translate-x-1 transition-transform">
+                  <span className="inline-flex items-center text-xs font-bold text-orange-600 mt-4 group-hover:translate-x-1 transition-transform">
                     Acessar guia <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </span>
                 </div>
 
                 <div 
                   onClick={() => setActiveTab('tipos')}
-                  className="bg-white p-5 rounded-xl border border-stone-200 hover:border-amber-500 hover:shadow-md cursor-pointer transition-all group"
+                  className="bg-slate-50/80 hover:bg-white p-6 rounded-2xl border border-slate-200/80 hover:border-sky-500/60 hover:shadow-md cursor-pointer transition-all group card-hover flex flex-col justify-between"
                 >
-                  <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold mb-3">
-                    <Droplet className="w-5 h-5 text-amber-700" />
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-sky-100/80 text-sky-700 flex items-center justify-center font-bold mb-4 group-hover:scale-105 transition-transform">
+                      <Droplet className="w-6 h-6 text-sky-600" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 text-base group-hover:text-sky-600 transition">Diferentes Tipos de Tinta</h3>
+                    <p className="text-xs sm:text-sm text-slate-600 mt-1.5 leading-relaxed">Paredes, ferro, madeira, piso, telhado: cada superfície pede o produto certo.</p>
                   </div>
-                  <h3 className="font-bold text-stone-900 group-hover:text-amber-700 transition">Diferentes Tipos de Tinta</h3>
-                  <p className="text-xs text-stone-600 mt-1">Paredes, ferro, madeira, piso, telhado: cada superfície pede um casamento certo.</p>
-                  <span className="inline-flex items-center text-xs font-semibold text-amber-600 mt-3 group-hover:translate-x-1 transition-transform">
+                  <span className="inline-flex items-center text-xs font-bold text-sky-600 mt-4 group-hover:translate-x-1 transition-transform">
                     Acessar guia <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </span>
                 </div>
 
                 <div 
                   onClick={() => setActiveTab('texturas')}
-                  className="bg-white p-5 rounded-xl border border-stone-200 hover:border-amber-500 hover:shadow-md cursor-pointer transition-all group"
+                  className="bg-slate-50/80 hover:bg-white p-6 rounded-2xl border border-slate-200/80 hover:border-purple-500/60 hover:shadow-md cursor-pointer transition-all group card-hover flex flex-col justify-between"
                 >
-                  <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold mb-3">
-                    <Palette className="w-5 h-5 text-amber-700" />
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-purple-100/80 text-purple-700 flex items-center justify-center font-bold mb-4 group-hover:scale-105 transition-transform">
+                      <Palette className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 text-base group-hover:text-purple-600 transition">Texturas e Efeitos Decorativos</h3>
+                    <p className="text-xs sm:text-sm text-slate-600 mt-1.5 leading-relaxed">Grafiato, Cimento Queimado, Marmorato e Granfino traduzidos para sua sala.</p>
                   </div>
-                  <h3 className="font-bold text-stone-900 group-hover:text-amber-700 transition">Texturas e Efeitos Decorativos</h3>
-                  <p className="text-xs text-stone-600 mt-1">Grafiato, Cimento Queimado, Marmorato e Granfino traduzidos para sua sala.</p>
-                  <span className="inline-flex items-center text-xs font-semibold text-amber-600 mt-3 group-hover:translate-x-1 transition-transform">
+                  <span className="inline-flex items-center text-xs font-bold text-purple-600 mt-4 group-hover:translate-x-1 transition-transform">
                     Acessar guia <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </span>
                 </div>
 
                 <div 
                   onClick={() => setActiveTab('ferramentas')}
-                  className="bg-white p-5 rounded-xl border border-stone-200 hover:border-amber-500 hover:shadow-md cursor-pointer transition-all group"
+                  className="bg-slate-50/80 hover:bg-white p-6 rounded-2xl border border-slate-200/80 hover:border-emerald-500/60 hover:shadow-md cursor-pointer transition-all group card-hover flex flex-col justify-between"
                 >
-                  <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold mb-3">
-                    <Wrench className="w-5 h-5 text-amber-700" />
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-100/80 text-emerald-700 flex items-center justify-center font-bold mb-4 group-hover:scale-105 transition-transform">
+                      <Wrench className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 text-base group-hover:text-emerald-600 transition">Ferramentas Certas</h3>
+                    <p className="text-xs sm:text-sm text-slate-600 mt-1.5 leading-relaxed">Por que a melhor tinta do mundo fica manchada com o rolo ou pincel errado.</p>
                   </div>
-                  <h3 className="font-bold text-stone-900 group-hover:text-amber-700 transition">Ferramentas Certas</h3>
-                  <p className="text-xs text-stone-600 mt-1">Por que a melhor tinta do mundo fica horrível com o rolo ou pincel errado.</p>
-                  <span className="inline-flex items-center text-xs font-semibold text-amber-600 mt-3 group-hover:translate-x-1 transition-transform">
+                  <span className="inline-flex items-center text-xs font-bold text-emerald-600 mt-4 group-hover:translate-x-1 transition-transform">
                     Acessar guia <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </span>
                 </div>
 
                 <div 
                   onClick={() => setActiveTab('patologias')}
-                  className="bg-white p-5 rounded-xl border border-stone-200 hover:border-amber-500 hover:shadow-md cursor-pointer transition-all group md:col-span-2 lg:col-span-2"
+                  className="bg-slate-50/80 hover:bg-white p-6 rounded-2xl border border-slate-200/80 hover:border-red-500/60 hover:shadow-md cursor-pointer transition-all group card-hover flex flex-col justify-between md:col-span-2 lg:col-span-2"
                 >
-                  <div className="w-10 h-10 rounded-lg bg-red-100 text-red-800 flex items-center justify-center font-bold mb-3">
-                    <AlertTriangle className="w-5 h-5 text-red-700" />
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-red-100/80 text-red-700 flex items-center justify-center font-bold mb-4 group-hover:scale-105 transition-transform">
+                      <AlertTriangle className="w-6 h-6 text-red-600" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 text-base group-hover:text-red-600 transition">Patologias & Soluções (Doutor Parede)</h3>
+                    <p className="text-xs sm:text-sm text-slate-600 mt-1.5 leading-relaxed">Bolhas, mofo, esfarelamento, enrugamento, calcinamento e mais 10 problemas comuns diagnosticados com receita prática de cura.</p>
                   </div>
-                  <h3 className="font-bold text-stone-900 group-hover:text-red-700 transition">Patologias & Soluções (Doutor Parede)</h3>
-                  <p className="text-xs text-stone-600 mt-1">Bolhas, mofo, esfarelamento, enrugamento, calcinamento e mais 10 problemas comuns explicados e resolvidos.</p>
-                  <span className="inline-flex items-center text-xs font-semibold text-red-600 mt-3 group-hover:translate-x-1 transition-transform">
+                  <span className="inline-flex items-center text-xs font-bold text-red-600 mt-4 group-hover:translate-x-1 transition-transform">
                     Consultar o Doutor Parede <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </span>
                 </div>
@@ -2032,7 +2048,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
             {/* Informações e Trajetória do Idealizador */}
             <div className="flex-1 space-y-5 text-center lg:text-left">
               <div>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider mb-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-bold uppercase tracking-wider mb-2">
                   <Sparkles className="w-3.5 h-3.5" />
                   Idealizador deste Projeto
                 </span>
@@ -2041,7 +2057,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                 </h3>
               </div>
 
-              <div className="space-y-3 text-stone-300 text-sm leading-relaxed">
+              <div className="space-y-3 text-slate-300 text-sm leading-relaxed">
                 <p>
                   Com quase três décadas de vivência diária no segmento de tintas imobiliárias, <strong>Vlademir Carer</strong> acumulou um conhecimento raro e completo: passou pelo chão de fábrica das indústrias químicas, pelo atendimento técnico atrás dos balcões de lojas e, acima de tudo, esteve ao lado dos profissionais nas obras, resolvendo problemas reais de infiltração, mofo, preparação e acabamento.
                 </p>
@@ -2052,29 +2068,29 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
 
               {/* Destaques de Autoridade */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-950/60 border border-stone-800 text-xs text-stone-200">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 font-bold">
+                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
+                  <div className="w-7 h-7 rounded-lg bg-orange-500/15 text-orange-400 flex items-center justify-center shrink-0 font-bold">
                     ★
                   </div>
                   <span>Quase 30 anos no mercado de tintas imobiliárias</span>
                 </div>
 
-                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-950/60 border border-stone-800 text-xs text-stone-200">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 font-bold">
+                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
+                  <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0 font-bold">
                     🏭
                   </div>
                   <span>Vivência prática em fábricas, lojas técnicas e obras</span>
                 </div>
 
-                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-950/60 border border-stone-800 text-xs text-stone-200">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 font-bold">
+                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0 font-bold">
                     🤝
                   </div>
                   <span>Defensor e mentor da valorização do pintor</span>
                 </div>
 
-                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-950/60 border border-stone-800 text-xs text-stone-200">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 font-bold">
+                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0 font-bold">
                     🔬
                   </div>
                   <span>Especialista em diagnóstico de patologias de parede</span>
@@ -2082,18 +2098,18 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
               </div>
 
               {/* Frase / Citação de Mestre */}
-              <div className="p-4 rounded-2xl bg-amber-500/5 border-l-4 border-amber-500 text-stone-200 text-xs sm:text-sm italic">
+              <div className="p-4 rounded-2xl bg-slate-950/60 border-l-4 border-orange-500 text-slate-200 text-xs sm:text-sm italic">
                 "A pintura não é apenas estética; é proteção estrutural, conforto térmico e a realização de um sonho. Quem entende de parede economiza tempo, dinheiro e vive muito melhor."
-                <span className="block mt-1 font-bold not-italic text-amber-400 text-xs">— Vlademir Carer</span>
+                <span className="block mt-1.5 font-bold not-italic text-orange-400 text-xs">— Vlademir Carer</span>
               </div>
 
               {/* Canais de Contato com o Idealizador */}
-              <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs">
+              <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-3.5 text-xs">
                 <a 
                   href="mailto:vcarer@gmail.com"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-200 border border-stone-700 hover:border-amber-500/50 transition font-medium"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-orange-500/50 transition font-medium"
                 >
-                  <Mail className="w-4 h-4 text-amber-400" />
+                  <Mail className="w-4 h-4 text-orange-400" />
                   <span>vcarer@gmail.com</span>
                 </a>
 
@@ -2101,7 +2117,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   href="https://wa.me/5511999999999?text=Ol%C3%A1%20Vlademir!%20Acesse%20o%20portal%20Pinta%20Aqui%20e%20gostaria%20de%20conversar."
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-medium transition shadow-sm"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-sm"
                 >
                   <Phone className="w-4 h-4" />
                   <span>Contato Direto no WhatsApp</span>
@@ -2115,29 +2131,52 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         </div>
       </section>
 
-      {/* Footer Assinado por Vlademir Carer */}
-      <footer className="bg-stone-900 text-stone-400 py-10 px-4 sm:px-6 border-t border-stone-800 text-xs sm:text-sm">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-lg font-bold text-white tracking-tight">Pinta Aqui</span>
-              <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium">
-                Idealizado por Vlademir Carer
-              </span>
+      {/* Footer Profissional e Limpo */}
+      <footer className="bg-slate-900 text-slate-400 py-12 px-4 sm:px-6 border-t border-slate-800 text-xs sm:text-sm">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="space-y-3 text-center md:text-left">
+            <div>
+              <LogoPintaAqui 
+                onClick={() => setActiveTab('geral')}
+                withPill={true}
+                size="sm"
+              />
             </div>
-            <p className="text-stone-400 mt-1 text-xs max-w-md">
-              A autoridade de quase 30 anos no ramo de tintas imobiliárias compartilhada gratuitamente com quem quer valorizar o imóvel e valorizar o trabalho profissional.
+            <p className="text-slate-400 text-xs max-w-md leading-relaxed">
+              A autoridade de quase 30 anos no ramo de tintas imobiliárias compartilhada gratuitamente com quem quer valorizar o imóvel e valorizar o trabalho do pintor profissional.
             </p>
+          </div>
+
+          {/* Links Rápidos do Portal */}
+          <div className="flex flex-wrap justify-center gap-5 text-xs">
+            <button onClick={() => setActiveTab('desvendando')} className="text-slate-400 hover:text-white transition cursor-pointer">
+              Guia de Tintas
+            </button>
+            <button onClick={() => setActiveTab('tipos')} className="text-slate-400 hover:text-white transition cursor-pointer">
+              Tipos de Superfície
+            </button>
+            <button onClick={() => setActiveTab('texturas')} className="text-slate-400 hover:text-white transition cursor-pointer">
+              Efeitos Decorativos
+            </button>
+            <button onClick={() => setActiveTab('ferramentas')} className="text-slate-400 hover:text-white transition cursor-pointer">
+              Ferramentas
+            </button>
+            <button onClick={() => setActiveTab('patologias')} className="text-slate-400 hover:text-white transition cursor-pointer">
+              Doutor Parede
+            </button>
+            <button onClick={() => setActiveTab('profissional')} className="text-orange-400 hover:text-orange-300 font-bold transition cursor-pointer">
+              Pintores Profissionais
+            </button>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 text-center md:text-right">
             <div>
-              <p className="text-stone-300 font-medium">www.pintaaqui.com.br</p>
-              <p className="text-stone-400 text-xs mt-0.5">Todos os direitos reservados • Feito com paixão pela boa pintura.</p>
+              <p className="text-slate-300 font-semibold text-xs">www.pintaaqui.com.br</p>
+              <p className="text-slate-500 text-[11px] mt-0.5">© 2026 • Feito com paixão pela boa pintura.</p>
             </div>
             <button
               onClick={() => setAdminModalOpen(true)}
-              className="p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-amber-400 border border-stone-700 transition"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-orange-400 border border-slate-700 transition cursor-pointer"
               title="Acesso Administrativo"
             >
               <Lock className="w-4 h-4" />
