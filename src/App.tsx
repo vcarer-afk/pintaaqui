@@ -196,7 +196,7 @@ export default function App() {
     setActiveTheme(preset);
     applyThemeToDom(preset);
     setTemaFeedbackMsg({
-      text: `Pré-visualização ativada: "${preset.nome}". O portal está exibindo este visual temporariamente. Para salvar definitivamente para todos os visitantes, clique em "Gravar na Nuvem".`,
+      text: `Pré-visualização ativada: "${preset.nome}". O portal está exibindo este visual na sua tela. Para gravar na nuvem para todos os visitantes, clique em "Aplicar Tema".`,
       type: 'success'
     });
     setTimeout(() => setTemaFeedbackMsg(null), 6000);
@@ -211,7 +211,7 @@ export default function App() {
     setSalvandoTemaNuvem(false);
     if (res.success) {
       setTemaFeedbackMsg({
-        text: `✓ Sucesso! O preset "${preset.nome}" foi gravado na nuvem no Supabase (${res.latencyMs}ms). Todos os visitantes agora carregarão este tema oficial!`,
+        text: `✓ Tema "${preset.nome}" aplicado e gravado com sucesso no Supabase (${res.latencyMs}ms)! As novas cores e fontes já estão ativas e visíveis online para todos os visitantes.`,
         type: 'success'
       });
     } else {
@@ -779,7 +779,14 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
   );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] font-sans antialiased selection:bg-orange-500/20 selection:text-orange-950">
+    <div 
+      className="min-h-screen font-sans antialiased selection:bg-orange-500/20 selection:text-orange-950 transition-colors duration-300"
+      style={{ 
+        backgroundColor: activeTheme.bgColor, 
+        color: activeTheme.textColor, 
+        fontFamily: activeTheme.fontBody 
+      }}
+    >
       {/* Header Topo Moderno e Limpo com Fundo Translúcido e Backdrop Blur */}
       <header className="bg-white/95 backdrop-blur-md text-slate-800 border-b border-slate-200/90 sticky top-0 z-40 shadow-xs transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
@@ -802,13 +809,17 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
+                  style={isActive ? { color: activeTheme.primaryColor } : {}}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-white text-orange-600 font-bold shadow-xs'
+                      ? 'bg-white font-bold shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-orange-600' : 'text-slate-400'}`} />
+                  <Icon 
+                    className="w-3.5 h-3.5" 
+                    style={{ color: isActive ? activeTheme.primaryColor : '#94a3b8' }} 
+                  />
                   {item.label}
                 </button>
               );
@@ -819,7 +830,8 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('profissional')}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-xs hover:shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+              style={{ backgroundColor: activeTheme.primaryColor }}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white font-bold text-xs shadow-xs hover:shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
             >
               <Users className="w-3.5 h-3.5" />
               <span>Achar Pintor</span>
@@ -853,7 +865,11 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
               className="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 cursor-pointer"
               aria-label="Abrir menu de navegação"
             >
-              {mobileMenuOpen ? <X className="w-5 h-5 text-orange-600" /> : <Menu className="w-5 h-5 text-slate-700" />}
+              {mobileMenuOpen ? (
+                <X className="w-5 h-5" style={{ color: activeTheme.primaryColor }} />
+              ) : (
+                <Menu className="w-5 h-5 text-slate-700" />
+              )}
             </button>
           </div>
         </div>
@@ -874,13 +890,21 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     setActiveTab(item.id);
                     setMobileMenuOpen(false);
                   }}
+                  style={isActive ? { 
+                    backgroundColor: activeTheme.primaryLight, 
+                    color: activeTheme.primaryDark,
+                    borderColor: activeTheme.primaryColor + '50'
+                  } : {}}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-orange-50 text-orange-700 font-bold border border-orange-200'
+                      ? 'font-bold border'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-orange-600' : 'text-slate-400'}`} />
+                  <Icon 
+                    className="w-4 h-4" 
+                    style={{ color: isActive ? activeTheme.primaryColor : '#94a3b8' }} 
+                  />
                   {item.label}
                 </button>
               );
@@ -897,13 +921,20 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
+                style={isActive ? { 
+                  backgroundColor: activeTheme.primaryColor, 
+                  color: '#ffffff' 
+                } : {}}
                 className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
                   isActive
-                    ? 'bg-orange-600 text-white font-bold shadow-2xs'
+                    ? 'font-bold shadow-2xs'
                     : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                <Icon 
+                  className="w-3.5 h-3.5" 
+                  style={{ color: isActive ? '#ffffff' : '#94a3b8' }} 
+                />
                 {item.label}
               </button>
             );
@@ -911,36 +942,88 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         </div>
       </header>
 
-      {/* Hero Moderno e Iluminado: Sensação de Parede Recém-Emassada e Limpa */}
-      <section className="bg-gradient-to-b from-white via-slate-50 to-slate-100/60 text-slate-900 py-12 sm:py-16 px-4 sm:px-6 relative overflow-hidden border-b border-slate-200/80">
+      {/* Hero Moderno e Iluminado com Paleta Dinâmica */}
+      <section 
+        className="py-12 sm:py-16 px-4 sm:px-6 relative overflow-hidden border-b transition-all duration-300"
+        style={{ 
+          background: `linear-gradient(to bottom, #ffffff, ${activeTheme.bgColor}, ${activeTheme.primaryLight}40)`,
+          borderColor: activeTheme.borderColor 
+        }}
+      >
         <div className="max-w-5xl mx-auto space-y-5">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-orange-50 border border-orange-200/80 text-orange-700 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-orange-600" />
+          <div 
+            className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold border transition-all"
+            style={{ 
+              backgroundColor: activeTheme.primaryLight, 
+              color: activeTheme.primaryDark,
+              borderColor: activeTheme.primaryColor + '40'
+            }}
+          >
+            <Sparkles className="w-3.5 h-3.5" style={{ color: activeTheme.primaryColor }} />
             Guia Completo para Você Mesmo Pintar ou Contratar com Segurança
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight leading-tight">
+          <h1 
+            className="text-3xl sm:text-5xl font-black tracking-tight leading-tight transition-colors"
+            style={{ 
+              fontFamily: activeTheme.fontHeading,
+              color: activeTheme.textColor 
+            }}
+          >
             Pintura Fácil, Descomplicada e Sem Erro
           </h1>
 
-          <div className="border-l-4 border-orange-500 pl-4 py-1">
-            <p className="text-sm sm:text-base text-slate-600 max-w-3xl leading-relaxed font-normal">
+          <div 
+            className="border-l-4 pl-4 py-1 transition-colors"
+            style={{ borderColor: activeTheme.primaryColor }}
+          >
+            <p 
+              className="text-sm sm:text-base max-w-3xl leading-relaxed font-normal"
+              style={{ color: activeTheme.textMuted }}
+            >
               "Pintar a própria casa não é um bicho de sete cabeças: e pode ser até uma terapia, revitalizante e econômica quando você sabe o caminho das pedras. Deixe que eu te guio passo a passo."
             </p>
           </div>
 
           <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-800">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
-              <span className="block text-2xl sm:text-3xl font-black text-orange-600">+30</span>
-              <span className="text-xs text-slate-600 font-medium">Anos de experiência técnica</span>
+            <div 
+              className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
+              style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
+            >
+              <span 
+                className="block text-2xl sm:text-3xl font-black"
+                style={{ color: activeTheme.primaryColor }}
+              >
+                +30
+              </span>
+              <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
+                Anos de experiência técnica
+              </span>
             </div>
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
-              <span className="block text-2xl sm:text-3xl font-black text-[#004B8D]">15</span>
-              <span className="text-xs text-slate-600 font-medium">Patologias explicadas & resolvidas</span>
+            <div 
+              className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
+              style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
+            >
+              <span 
+                className="block text-2xl sm:text-3xl font-black"
+                style={{ color: activeTheme.secondaryColor }}
+              >
+                15
+              </span>
+              <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
+                Patologias explicadas & resolvidas
+              </span>
             </div>
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
-              <span className="block text-2xl sm:text-3xl font-black text-emerald-600">Zero</span>
-              <span className="text-xs text-slate-600 font-medium">Desperdício de tinta e dinheiro</span>
+            <div 
+              className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
+              style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
+            >
+              <span className="block text-2xl sm:text-3xl font-black text-emerald-600">
+                Zero
+              </span>
+              <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
+                Desperdício de tinta e dinheiro
+              </span>
             </div>
           </div>
         </div>
@@ -2819,7 +2902,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                       </div>
                       <p className="text-xs text-stone-300 leading-relaxed">
                         Escolha entre os <strong>{THEME_PRESETS.length} padrões de cores e fontes</strong> desenvolvidos para o universo da pintura, arquitetura e construção civil.
-                        Ao clicar em <strong>"Gravar na Nuvem"</strong>, o tema é registrado no Supabase e passa a ser carregado automaticamente toda vez que qualquer usuário abrir o site.
+                        Ao clicar em <strong>"Aplicar Tema"</strong>, as novas cores são ativadas em tempo real na tela e gravadas na nuvem (Supabase) para que qualquer visitante visualize as novas cores online imediatamente.
                       </p>
                     </div>
 
@@ -2827,10 +2910,10 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     <div className="p-4 rounded-2xl bg-gradient-to-r from-stone-900 to-stone-950 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <span className="text-xs font-bold text-white block">
-                          Deseja fixar o tema selecionado como o padrão oficial do Pinta Aqui?
+                          Deseja aplicar e fixar o tema selecionado para todos os visitantes do Pinta Aqui?
                         </span>
                         <p className="text-[11px] text-stone-400 mt-0.5">
-                          Preset ativo: <strong className="text-amber-400">{activeTheme.nome}</strong> (Fontes: {activeTheme.fontHeadingName} + {activeTheme.fontBodyName})
+                          Tema selecionado: <strong className="text-amber-400">{activeTheme.nome}</strong> (Fontes: {activeTheme.fontHeadingName} + {activeTheme.fontBodyName})
                         </p>
                       </div>
                       <button
@@ -2842,12 +2925,12 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                         {salvandoTemaNuvem ? (
                           <>
                             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Gravando na Nuvem...</span>
+                            <span>Aplicando no Supabase...</span>
                           </>
                         ) : (
                           <>
-                            <Save className="w-3.5 h-3.5" />
-                            <span>Gravar Padrão na Nuvem</span>
+                            <Palette className="w-3.5 h-3.5" />
+                            <span>Aplicar Tema</span>
                           </>
                         )}
                       </button>
@@ -2968,20 +3051,29 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                                 type="button"
                                 onClick={() => handleSalvarTemaDefinitivo(preset)}
                                 disabled={salvandoTemaNuvem}
-                                className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                                className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
                                   isCurrentActive
-                                    ? 'bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-sm'
-                                    : 'bg-stone-800 hover:bg-amber-500 hover:text-stone-950 text-stone-200 border border-stone-700'
+                                    ? 'bg-emerald-500 hover:bg-emerald-400 text-stone-950 shadow-sm'
+                                    : 'bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-sm'
                                 }`}
                               >
-                                <Save className="w-3.5 h-3.5" />
-                                <span>{isCurrentActive ? 'Regravar na Nuvem' : 'Gravar na Nuvem'}</span>
+                                {isCurrentActive ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Tema Aplicado (Nuvem)</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Palette className="w-3.5 h-3.5" />
+                                    <span>Aplicar Tema</span>
+                                  </>
+                                )}
                               </button>
 
                               <button
                                 type="button"
                                 onClick={() => handleAplicarPreviaTema(preset)}
-                                className="py-2 px-3 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-300 text-xs transition border border-stone-800 hover:border-stone-700 cursor-pointer"
+                                className="py-2.5 px-3 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-300 text-xs transition border border-stone-800 hover:border-stone-700 cursor-pointer"
                                 title="Ver no site sem gravar definitivamente ainda"
                               >
                                 Prévia
