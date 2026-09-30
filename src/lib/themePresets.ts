@@ -1,8 +1,22 @@
 /**
- * Presets de Cores e Fontes Oficiais do Pinta Aqui
+ * Presets de Cores, Fontes e Tons de Fundo Oficiais do Pinta Aqui
  * Permite personalização visual completa do site pelo painel administrativo
  * e gravação direta no banco de dados na nuvem (Supabase).
  */
+
+export interface BackgroundToneOption {
+  id: string;
+  nome: string;
+  tag: string;
+  categoria?: 'claros' | 'terrosos' | 'suaves' | 'escuros';
+  corHex: string;
+  descricao: string;
+  isDark?: boolean;
+  bgCard: string;
+  textColor: string;
+  textMuted: string;
+  borderColor: string;
+}
 
 export interface ThemePreset {
   id: string;
@@ -27,6 +41,8 @@ export interface ThemePreset {
   secondaryHover: string;
   secondaryLight: string;
   
+  // Tons de Fundo e Superfície
+  bgToneId?: string;         // Identificador do tom de fundo selecionado
   bgColor: string;           // Fundo neutro do portal (ex: #F8FAFC)
   bgCard: string;            // Fundo dos cartões (ex: #FFFFFF)
   textColor: string;         // Cor do texto principal (ex: #1E293B)
@@ -39,6 +55,195 @@ export interface ThemePreset {
   // Cores para exibição de mostruário no painel
   swatches: string[];
 }
+
+/**
+ * Tons de Fundo Disponíveis para Personalização do Site
+ * Inclui tons neutros, terrosos, arquitetônicos e dark mode
+ */
+export const BACKGROUND_TONES: BackgroundToneOption[] = [
+  {
+    id: 'parede-emassada',
+    nome: 'Parede Emassada Suave (Slate 50)',
+    tag: 'Padrão Recomendado',
+    categoria: 'claros',
+    corHex: '#F8FAFC',
+    descricao: 'Sensação de parede recém-emassada, clara e neutra. Faz as fotos dos portfólios brilharem com contraste natural.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#1E293B',
+    textMuted: '#64748B',
+    borderColor: '#E2E8F0'
+  },
+  {
+    id: 'branco-neve',
+    nome: 'Branco Neve Puro (Catálogo)',
+    tag: 'Pureza & Luz Máxima',
+    categoria: 'claros',
+    corHex: '#FFFFFF',
+    descricao: 'Branco puro absoluto estilo estúdio de arquitetura e mostruário de lojas de tintas.',
+    isDark: false,
+    bgCard: '#FAFAFA',
+    textColor: '#0F172A',
+    textMuted: '#64748B',
+    borderColor: '#E4E4E7'
+  },
+  {
+    id: 'cinza-concreto',
+    nome: 'Cinza Concreto Aparente (Slate 100)',
+    tag: 'Urbano & Obra',
+    categoria: 'claros',
+    corHex: '#F1F5F9',
+    descricao: 'Inspirado em lajes e argamassas niveladas modernas, dando um ar sólido e industrial.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#0F172A',
+    textMuted: '#64748B',
+    borderColor: '#CBD5E1'
+  },
+  {
+    id: 'platina-neutra',
+    nome: 'Platina Neutra & Titânio (Zinc 100)',
+    tag: 'Contemporâneo',
+    categoria: 'claros',
+    corHex: '#F4F4F6',
+    descricao: 'Tom neutro de titânio arquitetônico, suave aos olhos com excelente legibilidade.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#18181B',
+    textMuted: '#71717A',
+    borderColor: '#E4E4E7'
+  },
+  {
+    id: 'areia-cal',
+    nome: 'Areia & Cal Natural (Bege Quente)',
+    tag: 'Aconchego & Argila',
+    categoria: 'terrosos',
+    corHex: '#FAF6F0',
+    descricao: 'Pigmentos terrosos minerais, reboco rústico e paredes mediterrâneas aquecidas.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#292524',
+    textMuted: '#78716C',
+    borderColor: '#E7E5E4'
+  },
+  {
+    id: 'travertino-nobre',
+    nome: 'Travertino & Mármore Nobre',
+    tag: 'Alto Padrão',
+    categoria: 'terrosos',
+    corHex: '#FAF7F2',
+    descricao: 'Base nobre e suave para ambientes com boiserie, sancas e marmorato polido.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#1C1917',
+    textMuted: '#78716C',
+    borderColor: '#E7E5E4'
+  },
+  {
+    id: 'palha-linho',
+    nome: 'Palha Natural & Fio de Linho',
+    tag: 'Rústico Nobre',
+    categoria: 'terrosos',
+    corHex: '#FAF8F0',
+    descricao: 'Tom quente de palha clara e fibras naturais, trazendo sensação de aconchego e conforto.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#292524',
+    textMuted: '#78716C',
+    borderColor: '#E8E5DF'
+  },
+  {
+    id: 'pessego-terral',
+    nome: 'Terracota Suave & Pêssego Natural',
+    tag: 'Calor & Energia',
+    categoria: 'terrosos',
+    corHex: '#FFF7ED',
+    descricao: 'Toque caloroso de pôr do sol e tijolos aparentes claros, transmitindo acolhimento e dinamismo.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#431407',
+    textMuted: '#9A3412',
+    borderColor: '#FED7AA'
+  },
+  {
+    id: 'verde-salvia',
+    nome: 'Verde Sálvia Suave (Eco & Bem-Estar)',
+    tag: 'Linha Ecológica',
+    categoria: 'suaves',
+    corHex: '#F2F7F4',
+    descricao: 'Inspirado em tintas sem cheiro (Zero VOC), quartos de bebê e ambientes relaxantes.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#134E4A',
+    textMuted: '#52796F',
+    borderColor: '#D1FAE5'
+  },
+  {
+    id: 'azul-gelo',
+    nome: 'Azul Gelo Técnico (Engenharia)',
+    tag: 'Técnico & Precisão',
+    categoria: 'suaves',
+    corHex: '#F0F6FA',
+    descricao: 'Ar técnico e cristalino para orçamentos de engenharia, laudos e projetos prediais.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#0F172A',
+    textMuted: '#475569',
+    borderColor: '#E0F2FE'
+  },
+  {
+    id: 'lavanda-bruma',
+    nome: 'Bruma Lavanda & Toque Acetinado',
+    tag: 'Harmonia & Calmaria',
+    categoria: 'suaves',
+    corHex: '#F7F6FB',
+    descricao: 'Tom etéreo suave para espaços de relaxamento, dormitórios e escritórios modernos.',
+    isDark: false,
+    bgCard: '#FFFFFF',
+    textColor: '#2E1065',
+    textMuted: '#6B7280',
+    borderColor: '#E9D5FF'
+  },
+  {
+    id: 'grafite-noturno',
+    nome: 'Grafite Noturno / Dark Mode (Slate 900)',
+    tag: 'Modo Escuro Premium',
+    categoria: 'escuros',
+    corHex: '#0F172A',
+    descricao: 'Fundo noturno imponente onde o laranja de obra e as fotos iluminadas ganham destaque dramático.',
+    isDark: true,
+    bgCard: '#1E293B',
+    textColor: '#F8FAFC',
+    textMuted: '#94A3B8',
+    borderColor: '#334155'
+  },
+  {
+    id: 'cimento-queimado-escuro',
+    nome: 'Cimento Queimado Carvão (Zinc 900)',
+    tag: 'Loft Industrial Escuro',
+    categoria: 'escuros',
+    corHex: '#18181B',
+    descricao: 'Estética contemporânea de cimento queimado escuro com aço e iluminação cênica.',
+    isDark: true,
+    bgCard: '#27272A',
+    textColor: '#FAFAFA',
+    textMuted: '#A1A1AA',
+    borderColor: '#3F3F46'
+  },
+  {
+    id: 'azul-petroleo-noturno',
+    nome: 'Azul Petróleo Profundo (Noite Naval)',
+    tag: 'Sofisticação Noturna',
+    categoria: 'escuros',
+    corHex: '#0B192C',
+    descricao: 'Fundo azul escuro arquitetônico de alto contraste que realça detalhes dourados e fotos com elegância.',
+    isDark: true,
+    bgCard: '#1E3E62',
+    textColor: '#F8FAFC',
+    textMuted: '#93C5FD',
+    borderColor: '#2D4E75'
+  }
+];
 
 export const THEME_PRESETS: ThemePreset[] = [
   {
@@ -58,6 +263,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     secondaryColor: '#004B8D',
     secondaryHover: '#003B6F',
     secondaryLight: '#EFF6FF',
+    bgToneId: 'parede-emassada',
     bgColor: '#F8FAFC',
     bgCard: '#FFFFFF',
     textColor: '#1E293B',
@@ -83,14 +289,15 @@ export const THEME_PRESETS: ThemePreset[] = [
     secondaryColor: '#0284C7',
     secondaryHover: '#0369A1',
     secondaryLight: '#F0F9FF',
-    bgColor: '#F8FAFC',
+    bgToneId: 'azul-gelo',
+    bgColor: '#F0F6FA',
     bgCard: '#FFFFFF',
     textColor: '#0F172A',
     textMuted: '#64748B',
     headerBg: 'rgba(255, 255, 255, 0.96)',
     footerBg: '#0F172A',
     borderColor: '#E2E8F0',
-    swatches: ['#1D4ED8', '#0284C7', '#F0F9FF', '#0F172A']
+    swatches: ['#1D4ED8', '#0284C7', '#F0F6FA', '#0F172A']
   },
   {
     id: 'terracota-argila',
@@ -108,14 +315,15 @@ export const THEME_PRESETS: ThemePreset[] = [
     secondaryColor: '#B45309',
     secondaryHover: '#92400E',
     secondaryLight: '#FEF3C7',
-    bgColor: '#FAF8F5',
+    bgToneId: 'areia-cal',
+    bgColor: '#FAF6F0',
     bgCard: '#FFFFFF',
     textColor: '#292524',
     textMuted: '#78716C',
     headerBg: 'rgba(255, 255, 255, 0.96)',
     footerBg: '#1C1917',
     borderColor: '#E7E5E4',
-    swatches: ['#C2410C', '#B45309', '#FAF8F5', '#292524']
+    swatches: ['#C2410C', '#B45309', '#FAF6F0', '#292524']
   },
   {
     id: 'verde-botanico',
@@ -133,14 +341,15 @@ export const THEME_PRESETS: ThemePreset[] = [
     secondaryColor: '#0D9488',
     secondaryHover: '#0F766E',
     secondaryLight: '#F0FDFA',
-    bgColor: '#F4F9F6',
+    bgToneId: 'verde-salvia',
+    bgColor: '#F2F7F4',
     bgCard: '#FFFFFF',
     textColor: '#134E4A',
     textMuted: '#52796F',
     headerBg: 'rgba(255, 255, 255, 0.96)',
     footerBg: '#064E3B',
     borderColor: '#D1FAE5',
-    swatches: ['#059669', '#0D9488', '#F4F9F6', '#134E4A']
+    swatches: ['#059669', '#0D9488', '#F2F7F4', '#134E4A']
   },
   {
     id: 'cimento-urbano',
@@ -158,6 +367,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     secondaryColor: '#EA580C',
     secondaryHover: '#C2410C',
     secondaryLight: '#FFF7ED',
+    bgToneId: 'cinza-concreto',
     bgColor: '#F1F5F9',
     bgCard: '#FFFFFF',
     textColor: '#0F172A',
@@ -183,14 +393,15 @@ export const THEME_PRESETS: ThemePreset[] = [
     secondaryColor: '#D97706',
     secondaryHover: '#B45309',
     secondaryLight: '#FEF3C7',
-    bgColor: '#FAFAF9',
+    bgToneId: 'travertino-nobre',
+    bgColor: '#FAF7F2',
     bgCard: '#FFFFFF',
     textColor: '#1C1917',
     textMuted: '#78716C',
     headerBg: 'rgba(255, 255, 255, 0.97)',
     footerBg: '#0F172A',
     borderColor: '#E7E5E4',
-    swatches: ['#0F172A', '#D97706', '#FAFAF9', '#1C1917']
+    swatches: ['#0F172A', '#D97706', '#FAF7F2', '#1C1917']
   },
   {
     id: 'solar-arquitetura',
@@ -208,14 +419,15 @@ export const THEME_PRESETS: ThemePreset[] = [
     secondaryColor: '#E11D48',
     secondaryHover: '#BE123C',
     secondaryLight: '#FFF1F2',
-    bgColor: '#FFFDF5',
+    bgToneId: 'areia-cal',
+    bgColor: '#FAF6F0',
     bgCard: '#FFFFFF',
     textColor: '#1E293B',
     textMuted: '#64748B',
     headerBg: 'rgba(255, 255, 255, 0.96)',
     footerBg: '#1E1B4B',
     borderColor: '#FEF3C7',
-    swatches: ['#D97706', '#E11D48', '#FFFDF5', '#1E293B']
+    swatches: ['#D97706', '#E11D48', '#FAF6F0', '#1E293B']
   },
   {
     id: 'minimalista-clean',
@@ -233,6 +445,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     secondaryColor: '#2563EB',
     secondaryHover: '#1D4ED8',
     secondaryLight: '#EFF6FF',
+    bgToneId: 'branco-neve',
     bgColor: '#FFFFFF',
     bgCard: '#FFFFFF',
     textColor: '#09090B',
@@ -241,13 +454,60 @@ export const THEME_PRESETS: ThemePreset[] = [
     footerBg: '#09090B',
     borderColor: '#E4E4E7',
     swatches: ['#09090B', '#2563EB', '#FFFFFF', '#71717A']
+  },
+  {
+    id: 'dark-obra-grafite',
+    nome: 'Dark Mode Obra & Cimento Queimado',
+    tag: 'Fundo Escuro Premium',
+    descricao: 'Fundo escuro profundo grafite (#0F172A) onde o laranja oficial de obra (#EA580C) ganha destaque máximo com elegância noturna.',
+    fontHeading: "'Space Grotesk', sans-serif",
+    fontHeadingName: 'Space Grotesk',
+    fontBody: "'Plus Jakarta Sans', sans-serif",
+    fontBodyName: 'Plus Jakarta Sans',
+    primaryColor: '#EA580C',
+    primaryHover: '#C2410C',
+    primaryLight: '#7C2D12',
+    primaryDark: '#FFEDD5',
+    secondaryColor: '#0284C7',
+    secondaryHover: '#0369A1',
+    secondaryLight: '#082F49',
+    bgToneId: 'grafite-noturno',
+    bgColor: '#0F172A',
+    bgCard: '#1E293B',
+    textColor: '#F8FAFC',
+    textMuted: '#94A3B8',
+    headerBg: 'rgba(15, 23, 42, 0.95)',
+    footerBg: '#020617',
+    borderColor: '#334155',
+    swatches: ['#EA580C', '#0284C7', '#0F172A', '#F8FAFC']
   }
 ];
 
 export function getPresetById(id?: string): ThemePreset {
   if (!id) return THEME_PRESETS[0];
   const found = THEME_PRESETS.find(p => p.id === id);
-  return found || THEME_PRESETS[0];
+  return found ? { ...found } : { ...THEME_PRESETS[0] };
+}
+
+export function getBackgroundToneById(id?: string): BackgroundToneOption {
+  if (!id) return BACKGROUND_TONES[0];
+  const found = BACKGROUND_TONES.find(b => b.id === id);
+  return found || BACKGROUND_TONES[0];
+}
+
+/**
+ * Mescla um tom de fundo selecionado com o tema atual
+ */
+export function applyBackgroundToneToTheme(theme: ThemePreset, bgTone: BackgroundToneOption): ThemePreset {
+  return {
+    ...theme,
+    bgToneId: bgTone.id,
+    bgColor: bgTone.corHex,
+    bgCard: bgTone.bgCard,
+    textColor: bgTone.textColor,
+    textMuted: bgTone.textMuted,
+    borderColor: bgTone.borderColor
+  };
 }
 
 /**

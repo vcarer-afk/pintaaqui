@@ -366,10 +366,18 @@ export async function salvarTemaSiteNuvem(tema: ThemePreset): Promise<{ success:
       .delete()
       .eq('tipo_servico', 'config_tema_site');
 
-    // 2. Insere o preset selecionado com timestamp
+    // 2. Insere o preset selecionado com informações completas de fundo e cores
     const payload = {
       presetId: tema.id,
       nome: tema.nome,
+      bgToneId: tema.bgToneId,
+      bgColor: tema.bgColor,
+      bgCard: tema.bgCard,
+      textColor: tema.textColor,
+      textMuted: tema.textMuted,
+      borderColor: tema.borderColor,
+      primaryColor: tema.primaryColor,
+      secondaryColor: tema.secondaryColor,
       updatedAt: new Date().toISOString()
     };
 
@@ -394,6 +402,7 @@ export async function salvarTemaSiteNuvem(tema: ThemePreset): Promise<{ success:
     // Cache local imediato para abrir sem atraso
     if (typeof window !== 'undefined') {
       localStorage.setItem('pintaaqui_active_theme_id', tema.id);
+      localStorage.setItem('pintaaqui_active_theme_data', JSON.stringify(payload));
     }
 
     return { success: true, latencyMs };
@@ -404,7 +413,7 @@ export async function salvarTemaSiteNuvem(tema: ThemePreset): Promise<{ success:
 }
 
 /**
- * Carrega o preset de cores e fontes ativo da nuvem toda vez que o portal abre.
+ * Carrega o preset de cores, fontes e fundo ativo da nuvem toda vez que o portal abre.
  */
 export async function carregarTemaSiteNuvem(): Promise<ThemePreset | null> {
   try {
@@ -418,6 +427,20 @@ export async function carregarTemaSiteNuvem(): Promise<ThemePreset | null> {
 
     if (error || !data || data.length === 0) {
       if (typeof window !== 'undefined') {
+        const cachedRaw = localStorage.getItem('pintaaqui_active_theme_data');
+        if (cachedRaw) {
+          try {
+            const parsed = JSON.parse(cachedRaw);
+            const preset = getPresetById(parsed.presetId);
+            if (parsed.bgColor) preset.bgColor = parsed.bgColor;
+            if (parsed.bgCard) preset.bgCard = parsed.bgCard;
+            if (parsed.textColor) preset.textColor = parsed.textColor;
+            if (parsed.textMuted) preset.textMuted = parsed.textMuted;
+            if (parsed.borderColor) preset.borderColor = parsed.borderColor;
+            if (parsed.bgToneId) preset.bgToneId = parsed.bgToneId;
+            return preset;
+          } catch (e) {}
+        }
         const cachedId = localStorage.getItem('pintaaqui_active_theme_id');
         if (cachedId) return getPresetById(cachedId);
       }
@@ -429,8 +452,17 @@ export async function carregarTemaSiteNuvem(): Promise<ThemePreset | null> {
       try {
         const parsed = JSON.parse(rawJson);
         const preset = getPresetById(parsed.presetId);
+        // Aplica o tom de fundo personalizado caso gravado
+        if (parsed.bgColor) preset.bgColor = parsed.bgColor;
+        if (parsed.bgCard) preset.bgCard = parsed.bgCard;
+        if (parsed.textColor) preset.textColor = parsed.textColor;
+        if (parsed.textMuted) preset.textMuted = parsed.textMuted;
+        if (parsed.borderColor) preset.borderColor = parsed.borderColor;
+        if (parsed.bgToneId) preset.bgToneId = parsed.bgToneId;
+
         if (typeof window !== 'undefined') {
           localStorage.setItem('pintaaqui_active_theme_id', preset.id);
+          localStorage.setItem('pintaaqui_active_theme_data', JSON.stringify(parsed));
         }
         return preset;
       } catch (e) {

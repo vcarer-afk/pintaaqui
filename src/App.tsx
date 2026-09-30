@@ -77,7 +77,15 @@ import {
   salvarTemaSiteNuvem,
   carregarTemaSiteNuvem
 } from './lib/supabase';
-import { ThemePreset, THEME_PRESETS, getPresetById, applyThemeToDom } from './lib/themePresets';
+import { 
+  ThemePreset, 
+  THEME_PRESETS, 
+  BACKGROUND_TONES, 
+  BackgroundToneOption, 
+  applyBackgroundToneToTheme, 
+  getPresetById, 
+  applyThemeToDom 
+} from './lib/themePresets';
 import LogoPintaAqui from './components/LogoPintaAqui';
 
 export default function App() {
@@ -103,6 +111,7 @@ export default function App() {
   const [activeTheme, setActiveTheme] = useState<ThemePreset>(THEME_PRESETS[0]);
   const [salvandoTemaNuvem, setSalvandoTemaNuvem] = useState(false);
   const [temaFeedbackMsg, setTemaFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [bgCategoryFilter, setBgCategoryFilter] = useState<'todos' | 'claros' | 'terrosos' | 'suaves' | 'escuros'>('todos');
 
   // Foto do Idealizador (Vlademir Carer) - Gravada em Nuvem e Carregada a Cada Abertura
   const [idealizadorFoto, setIdealizadorFoto] = useState<string>(vlademirPhoto);
@@ -217,6 +226,39 @@ export default function App() {
     } else {
       setTemaFeedbackMsg({
         text: res.error || 'Erro ao gravar tema na nuvem.',
+        type: 'error'
+      });
+    }
+    setTimeout(() => setTemaFeedbackMsg(null), 7000);
+  };
+
+  const handleTrocarFundo = (bgTone: BackgroundToneOption) => {
+    const updatedTheme = applyBackgroundToneToTheme(activeTheme, bgTone);
+    setActiveTheme(updatedTheme);
+    applyThemeToDom(updatedTheme);
+    setTemaFeedbackMsg({
+      text: `Tom de fundo alterado para "${bgTone.nome}". As novas cores já estão visíveis na tela! Para salvar na nuvem para todos os visitantes, clique em "Aplicar Tema".`,
+      type: 'success'
+    });
+    setTimeout(() => setTemaFeedbackMsg(null), 6000);
+  };
+
+  const handleSalvarFundoDireto = async (bgTone: BackgroundToneOption) => {
+    setSalvandoTemaNuvem(true);
+    setTemaFeedbackMsg(null);
+    const updatedTheme = applyBackgroundToneToTheme(activeTheme, bgTone);
+    setActiveTheme(updatedTheme);
+    applyThemeToDom(updatedTheme);
+    const res = await salvarTemaSiteNuvem(updatedTheme);
+    setSalvandoTemaNuvem(false);
+    if (res.success) {
+      setTemaFeedbackMsg({
+        text: `✓ Fundo "${bgTone.nome}" aplicado e gravado no Supabase (${res.latencyMs}ms)! O site já está exibindo o novo fundo online para todos os visitantes.`,
+        type: 'success'
+      });
+    } else {
+      setTemaFeedbackMsg({
+        text: res.error || 'Erro ao gravar tom de fundo na nuvem.',
         type: 'error'
       });
     }
@@ -778,6 +820,8 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
     p.porQue.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const activeBgTone = BACKGROUND_TONES.find(b => b.corHex.toLowerCase() === activeTheme.bgColor.toLowerCase()) || BACKGROUND_TONES[0];
+
   return (
     <div 
       className="min-h-screen font-sans antialiased selection:bg-orange-500/20 selection:text-orange-950 transition-colors duration-300"
@@ -788,7 +832,14 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
       }}
     >
       {/* Header Topo Moderno e Limpo com Fundo Translúcido e Backdrop Blur */}
-      <header className="bg-white/95 backdrop-blur-md text-slate-800 border-b border-slate-200/90 sticky top-0 z-40 shadow-xs transition-all">
+      <header 
+        className="backdrop-blur-md border-b sticky top-0 z-40 shadow-xs transition-all"
+        style={{
+          backgroundColor: activeBgTone?.isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+          color: activeTheme.textColor,
+          borderColor: activeTheme.borderColor
+        }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           
           {/* Logo Oficial Pinta Aqui */}
@@ -801,7 +852,13 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
           </div>
 
           {/* Menus Desktop (Design moderno e limpo em pílula sutil com cantos suaves) */}
-          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/70">
+          <nav 
+            className="hidden lg:flex items-center gap-1 p-1.5 rounded-2xl border transition-colors"
+            style={{
+              backgroundColor: activeBgTone?.isDark ? 'rgba(30, 41, 59, 0.85)' : 'rgba(241, 245, 249, 0.9)',
+              borderColor: activeTheme.borderColor
+            }}
+          >
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -809,16 +866,21 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  style={isActive ? { color: activeTheme.primaryColor } : {}}
+                  style={isActive ? { 
+                    backgroundColor: activeBgTone?.isDark ? '#0f172a' : '#ffffff',
+                    color: activeTheme.primaryColor 
+                  } : {}}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-white font-bold shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      ? 'font-bold shadow-xs'
+                      : activeBgTone?.isDark
+                        ? 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
                   <Icon 
                     className="w-3.5 h-3.5" 
-                    style={{ color: isActive ? activeTheme.primaryColor : '#94a3b8' }} 
+                    style={{ color: isActive ? activeTheme.primaryColor : activeBgTone?.isDark ? '#94a3b8' : '#64748b' }} 
                   />
                   {item.label}
                 </button>
@@ -946,7 +1008,9 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
       <section 
         className="py-12 sm:py-16 px-4 sm:px-6 relative overflow-hidden border-b transition-all duration-300"
         style={{ 
-          background: `linear-gradient(to bottom, #ffffff, ${activeTheme.bgColor}, ${activeTheme.primaryLight}40)`,
+          background: activeBgTone?.isDark
+            ? `linear-gradient(to bottom, rgba(30, 41, 59, 0.8), ${activeTheme.bgColor}, rgba(15, 23, 42, 0.95))`
+            : `linear-gradient(to bottom, #ffffff, ${activeTheme.bgColor}, ${activeTheme.primaryLight}40)`,
           borderColor: activeTheme.borderColor 
         }}
       >
@@ -1035,14 +1099,23 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         {/* Resumo ou Abas */}
         {activeTab === 'geral' && (
           <div className="space-y-12">
-            <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/80 text-slate-800 shadow-xs">
+            <div 
+              className="rounded-3xl p-6 sm:p-10 border shadow-xs transition-all"
+              style={{
+                backgroundColor: activeTheme.bgCard,
+                color: activeTheme.textColor,
+                borderColor: activeTheme.borderColor
+              }}
+            >
               <div className="max-w-3xl">
-                <span className="text-xs font-bold uppercase tracking-wider text-orange-600">Manual Prático de Pintura</span>
-                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 mt-1 flex items-center gap-2.5">
-                  <BookOpen className="w-7 h-7 text-orange-600 shrink-0" />
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: activeTheme.primaryColor }}>
+                  Manual Prático de Pintura
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black mt-1 flex items-center gap-2.5" style={{ color: activeTheme.textColor }}>
+                  <BookOpen className="w-7 h-7 shrink-0" style={{ color: activeTheme.primaryColor }} />
                   Como navegar neste guia do Pinta Aqui
                 </h2>
-                <p className="mt-3 text-slate-600 leading-relaxed text-sm sm:text-base">
+                <p className="mt-3 leading-relaxed text-sm sm:text-base" style={{ color: activeTheme.textMuted }}>
                   Desenvolvi este manual especialmente para você que nunca segurou um rolo na mão, ou para quem já tentou pintar e teve dor de cabeça com bolhas, marcas e cheiro forte. Ele está dividido em <strong>5 pilares essenciais</strong>:
                 </p>
               </div>
@@ -2910,10 +2983,10 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     <div className="p-4 rounded-2xl bg-gradient-to-r from-stone-900 to-stone-950 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <span className="text-xs font-bold text-white block">
-                          Deseja aplicar e fixar o tema selecionado para todos os visitantes do Pinta Aqui?
+                          Deseja aplicar e fixar o tema e fundo selecionados para todos os visitantes do Pinta Aqui?
                         </span>
                         <p className="text-[11px] text-stone-400 mt-0.5">
-                          Tema selecionado: <strong className="text-amber-400">{activeTheme.nome}</strong> (Fontes: {activeTheme.fontHeadingName} + {activeTheme.fontBodyName})
+                          Tema: <strong className="text-amber-400">{activeTheme.nome}</strong> • Fundo: <strong className="text-amber-300">{activeBgTone?.nome || activeTheme.bgColor}</strong> ({activeTheme.bgColor})
                         </p>
                       </div>
                       <button
@@ -2930,10 +3003,162 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                         ) : (
                           <>
                             <Palette className="w-3.5 h-3.5" />
-                            <span>Aplicar Tema</span>
+                            <span>Aplicar Tema & Fundo</span>
                           </>
                         )}
                       </button>
+                    </div>
+
+                    {/* SELEÇÃO DEDICADA DE TONS DE FUNDO DO SITE (BACKGROUND) */}
+                    <div className="bg-stone-950 p-5 rounded-2xl border border-stone-800 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 text-white font-bold text-sm">
+                            <Layers className="w-4 h-4 text-amber-400" />
+                            <span>Tons de Fundo para o Portal (Background)</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                              {BACKGROUND_TONES.length} Opções
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-400 mt-1">
+                            Vá além do fundo branco! Alterne para tons de parede recém-emassada, concreto aparente, areia natural, verde sálvia, azul gelo ou modo escuro (Dark Mode).
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[11px] text-stone-400">Fundo ativo:</span>
+                          <span 
+                            className="px-2.5 py-1 rounded-lg font-bold text-xs border flex items-center gap-1.5 shadow-2xs"
+                            style={{ 
+                              backgroundColor: activeTheme.bgColor, 
+                              color: activeTheme.textColor,
+                              borderColor: activeTheme.borderColor
+                            }}
+                          >
+                            <span 
+                              className="w-3 h-3 rounded-full border border-black/20 shrink-0"
+                              style={{ backgroundColor: activeTheme.bgColor }}
+                            />
+                            {activeBgTone?.nome || activeTheme.bgColor}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Filtros de Categoria de Tons de Fundo */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                        {[
+                          { id: 'todos', label: 'Todos os Tons', count: BACKGROUND_TONES.length },
+                          { id: 'claros', label: 'Claros & Neutros', count: BACKGROUND_TONES.filter(b => b.categoria === 'claros').length },
+                          { id: 'terrosos', label: 'Terrosos & Quentes', count: BACKGROUND_TONES.filter(b => b.categoria === 'terrosos').length },
+                          { id: 'suaves', label: 'Suaves & Bem-Estar', count: BACKGROUND_TONES.filter(b => b.categoria === 'suaves').length },
+                          { id: 'escuros', label: 'Modo Escuro (Dark)', count: BACKGROUND_TONES.filter(b => b.categoria === 'escuros').length },
+                        ].map((cat) => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setBgCategoryFilter(cat.id as any)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                              bgCategoryFilter === cat.id
+                                ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
+                                : 'bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-white border border-stone-800'
+                            }`}
+                          >
+                            <span>{cat.label}</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                              bgCategoryFilter === cat.id ? 'bg-stone-950/20 text-stone-950' : 'bg-stone-800 text-stone-400'
+                            }`}>
+                              {cat.count}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Grade de Cards Interativos de Tons de Fundo */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                        {BACKGROUND_TONES
+                          .filter(tone => bgCategoryFilter === 'todos' || tone.categoria === bgCategoryFilter)
+                          .map((tone) => {
+                            const isToneActive = activeTheme.bgColor.toLowerCase() === tone.corHex.toLowerCase();
+                            return (
+                              <div
+                                key={tone.id}
+                                onClick={() => handleTrocarFundo(tone)}
+                                className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                                  isToneActive
+                                    ? 'bg-stone-900 border-amber-500 shadow-md ring-1 ring-amber-500/50'
+                                    : 'bg-stone-900/60 border-stone-800 hover:border-stone-700 hover:bg-stone-900'
+                                }`}
+                              >
+                                <div className="space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-center gap-2.5">
+                                      <div 
+                                        className="w-9 h-9 rounded-lg border border-white/20 shadow-xs shrink-0 flex items-center justify-center font-black text-xs"
+                                        style={{ backgroundColor: tone.corHex, color: tone.textColor }}
+                                      >
+                                        Aa
+                                      </div>
+                                      <div>
+                                        <span className="font-bold text-xs text-white block leading-tight">
+                                          {tone.nome}
+                                        </span>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                          <span className="text-[10px] text-amber-400 font-mono">
+                                            {tone.corHex}
+                                          </span>
+                                          <span className="text-[9px] text-stone-400 px-1 py-0.2 rounded bg-stone-800">
+                                            {tone.isDark ? 'Escuro' : 'Claro'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {isToneActive ? (
+                                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 shrink-0 flex items-center gap-0.5">
+                                        <Check className="w-2.5 h-2.5" /> Ativo
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9px] text-stone-400 px-1.5 py-0.5 rounded bg-stone-800/80 border border-stone-700/50">
+                                        {tone.tag}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <p className="text-[11px] text-stone-400 leading-snug line-clamp-2">
+                                    {tone.descricao}
+                                  </p>
+                                </div>
+
+                                <div className="pt-2.5 mt-2 border-t border-stone-800/70 flex items-center justify-between gap-2 text-[11px]">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTrocarFundo(tone);
+                                    }}
+                                    className="px-2 py-1 rounded-lg text-[10px] text-stone-300 hover:text-white bg-stone-800/70 hover:bg-stone-800 border border-stone-700/60 transition cursor-pointer"
+                                  >
+                                    Testar Prévia
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSalvarFundoDireto(tone);
+                                    }}
+                                    disabled={salvandoTemaNuvem}
+                                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                      isToneActive
+                                        ? 'bg-emerald-500 text-stone-950 hover:bg-emerald-400'
+                                        : 'bg-amber-500 hover:bg-amber-400 text-stone-950'
+                                    }`}
+                                  >
+                                    {isToneActive ? '✓ Fundo na Nuvem' : 'Aplicar Fundo'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
                     </div>
 
                     {/* Grade de Presets com Cartões Interativos */}
