@@ -73,8 +73,11 @@ import {
   excluirPintorNuvem,
   salvarFotoIdealizadorNuvem,
   carregarFotoIdealizadorNuvem,
-  restaurarFotoIdealizadorNuvem
+  restaurarFotoIdealizadorNuvem,
+  salvarTemaSiteNuvem,
+  carregarTemaSiteNuvem
 } from './lib/supabase';
+import { ThemePreset, THEME_PRESETS, getPresetById, applyThemeToDom } from './lib/themePresets';
 import LogoPintaAqui from './components/LogoPintaAqui';
 
 export default function App() {
@@ -93,8 +96,13 @@ export default function App() {
   // Supabase & Site Settings (Com credenciais padrão em nuvem)
   const [supabaseUrl, setSupabaseUrl] = useState(DEFAULT_SUPABASE_URL);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(DEFAULT_SUPABASE_ANON_KEY);
-  const [adminTab, setAdminTab] = useState<'pintores' | 'idealizador' | 'supabase' | 'schema' | 'geral'>('pintores');
+  const [adminTab, setAdminTab] = useState<'pintores' | 'idealizador' | 'temas' | 'supabase' | 'schema' | 'geral'>('pintores');
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Presets de Cores e Fontes (Gravados na Nuvem no Supabase)
+  const [activeTheme, setActiveTheme] = useState<ThemePreset>(THEME_PRESETS[0]);
+  const [salvandoTemaNuvem, setSalvandoTemaNuvem] = useState(false);
+  const [temaFeedbackMsg, setTemaFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Foto do Idealizador (Vlademir Carer) - Gravada em Nuvem e Carregada a Cada Abertura
   const [idealizadorFoto, setIdealizadorFoto] = useState<string>(vlademirPhoto);
@@ -164,7 +172,56 @@ export default function App() {
       }
     }
     carregarFotoDoIdealizador();
+
+    // Carregar tema de cores e fontes oficial da nuvem (ou inicializar padrão)
+    async function carregarTemaNuvemInicial() {
+      try {
+        const temaNuvem = await carregarTemaSiteNuvem();
+        if (temaNuvem) {
+          setActiveTheme(temaNuvem);
+          applyThemeToDom(temaNuvem);
+        } else {
+          applyThemeToDom(THEME_PRESETS[0]);
+          await salvarTemaSiteNuvem(THEME_PRESETS[0]);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar tema da nuvem:', err);
+        applyThemeToDom(THEME_PRESETS[0]);
+      }
+    }
+    carregarTemaNuvemInicial();
   }, []);
+
+  const handleAplicarPreviaTema = (preset: ThemePreset) => {
+    setActiveTheme(preset);
+    applyThemeToDom(preset);
+    setTemaFeedbackMsg({
+      text: `Pré-visualização ativada: "${preset.nome}". O portal está exibindo este visual temporariamente. Para salvar definitivamente para todos os visitantes, clique em "Gravar na Nuvem".`,
+      type: 'success'
+    });
+    setTimeout(() => setTemaFeedbackMsg(null), 6000);
+  };
+
+  const handleSalvarTemaDefinitivo = async (preset: ThemePreset) => {
+    setSalvandoTemaNuvem(true);
+    setTemaFeedbackMsg(null);
+    setActiveTheme(preset);
+    applyThemeToDom(preset);
+    const res = await salvarTemaSiteNuvem(preset);
+    setSalvandoTemaNuvem(false);
+    if (res.success) {
+      setTemaFeedbackMsg({
+        text: `✓ Sucesso! O preset "${preset.nome}" foi gravado na nuvem no Supabase (${res.latencyMs}ms). Todos os visitantes agora carregarão este tema oficial!`,
+        type: 'success'
+      });
+    } else {
+      setTemaFeedbackMsg({
+        text: res.error || 'Erro ao gravar tema na nuvem.',
+        type: 'error'
+      });
+    }
+    setTimeout(() => setTemaFeedbackMsg(null), 7000);
+  };
 
   const handleFotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2310,6 +2367,17 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     <span>Foto do Idealizador</span>
                   </button>
                   <button
+                    onClick={() => setAdminTab('temas')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
+                      adminTab === 'temas'
+                        ? 'bg-amber-500 text-stone-950 font-bold'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-800'
+                    }`}
+                  >
+                    <Palette className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Personalização & Temas ({THEME_PRESETS.length})</span>
+                  </button>
+                  <button
                     onClick={() => setAdminTab('supabase')}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
                       adminTab === 'supabase'
@@ -2712,6 +2780,217 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
 
                     </div>
 
+                  </div>
+                )}
+
+                {/* Aba: Personalização & Temas Visuais (Cores e Fontes em Nuvem) */}
+                {adminTab === 'temas' && (
+                  <div className="space-y-6">
+                    {/* Alerta de Feedback de Gravação do Tema */}
+                    {temaFeedbackMsg && (
+                      <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 border transition ${
+                        temaFeedbackMsg.type === 'success'
+                          ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                          : 'bg-red-950/80 border-red-500/50 text-red-200'
+                      }`}>
+                        {temaFeedbackMsg.type === 'success' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                        )}
+                        <span>{temaFeedbackMsg.text}</span>
+                      </div>
+                    )}
+
+                    {/* Banner Informativo Superior */}
+                    <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                          <Palette className="w-4 h-4 text-amber-400" />
+                          Personalização do Site: Cores & Tipografia em Nuvem
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-stone-400">Ativo no portal:</span>
+                          <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/30 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                            {activeTheme.nome}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-stone-300 leading-relaxed">
+                        Escolha entre os <strong>{THEME_PRESETS.length} padrões de cores e fontes</strong> desenvolvidos para o universo da pintura, arquitetura e construção civil.
+                        Ao clicar em <strong>"Gravar na Nuvem"</strong>, o tema é registrado no Supabase e passa a ser carregado automaticamente toda vez que qualquer usuário abrir o site.
+                      </p>
+                    </div>
+
+                    {/* Ação de Gravação Rápida do Preset Ativo Atual como Padrão */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-stone-900 to-stone-950 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <span className="text-xs font-bold text-white block">
+                          Deseja fixar o tema selecionado como o padrão oficial do Pinta Aqui?
+                        </span>
+                        <p className="text-[11px] text-stone-400 mt-0.5">
+                          Preset ativo: <strong className="text-amber-400">{activeTheme.nome}</strong> (Fontes: {activeTheme.fontHeadingName} + {activeTheme.fontBodyName})
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSalvarTemaDefinitivo(activeTheme)}
+                        disabled={salvandoTemaNuvem}
+                        className="py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/20 shrink-0 cursor-pointer"
+                      >
+                        {salvandoTemaNuvem ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Gravando na Nuvem...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-3.5 h-3.5" />
+                            <span>Gravar Padrão na Nuvem</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Grade de Presets com Cartões Interativos */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {THEME_PRESETS.map((preset) => {
+                        const isCurrentActive = activeTheme.id === preset.id;
+                        return (
+                          <div
+                            key={preset.id}
+                            className={`p-5 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+                              isCurrentActive
+                                ? 'bg-stone-950 border-amber-500/80 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500/30'
+                                : 'bg-stone-950/70 border-stone-800 hover:border-stone-700'
+                            }`}
+                          >
+                            <div className="space-y-3">
+                              {/* Cabeçalho do Card */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h5 className="font-bold text-white text-sm">
+                                      {preset.nome}
+                                    </h5>
+                                    {preset.isDefault && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                                        Padrão
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[11px] text-amber-400/90 font-medium block mt-0.5">
+                                    {preset.tag}
+                                  </span>
+                                </div>
+
+                                {isCurrentActive ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1 shrink-0">
+                                    <Check className="w-3 h-3" /> Ativo
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-stone-500">
+                                    Disponível
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="text-xs text-stone-400 leading-relaxed">
+                                {preset.descricao}
+                              </p>
+
+                              {/* Especificações de Tipografia */}
+                              <div className="p-2.5 rounded-xl bg-stone-900 border border-stone-800 space-y-1 text-xs">
+                                <div className="flex items-center justify-between text-stone-300 text-[11px]">
+                                  <span>Título: <strong style={{ fontFamily: preset.fontHeading }}>{preset.fontHeadingName}</strong></span>
+                                  <span>Corpo: <strong style={{ fontFamily: preset.fontBody }}>{preset.fontBodyName}</strong></span>
+                                </div>
+                              </div>
+
+                              {/* Mostrador de Paleta de Cores (Swatches) */}
+                              <div className="space-y-1.5 pt-1">
+                                <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider block">
+                                  Paleta de Cores
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  {preset.swatches.map((color, idx) => (
+                                    <div key={idx} className="flex flex-col items-center gap-1">
+                                      <div
+                                        className="w-8 h-8 rounded-lg border border-white/20 shadow-xs"
+                                        style={{ backgroundColor: color }}
+                                        title={color}
+                                      />
+                                      <span className="text-[9px] font-mono text-stone-400">
+                                        {color}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Mini-demonstração ao vivo do preset */}
+                              <div 
+                                className="p-3 rounded-xl border border-stone-700/60 mt-2 space-y-2"
+                                style={{ backgroundColor: preset.bgColor, color: preset.textColor }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span 
+                                    className="font-bold text-xs" 
+                                    style={{ fontFamily: preset.fontHeading, color: preset.textColor }}
+                                  >
+                                    Exemplo de Título
+                                  </span>
+                                  <span 
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                                    style={{ backgroundColor: preset.primaryLight, color: preset.primaryDark }}
+                                  >
+                                    Etiqueta
+                                  </span>
+                                </div>
+                                <p className="text-[11px] leading-tight" style={{ fontFamily: preset.fontBody, color: preset.textMuted }}>
+                                  Texto explicativo sobre tintas e preparação de superfícies.
+                                </p>
+                                <div className="pt-1">
+                                  <span 
+                                    className="inline-block text-[11px] font-bold px-3 py-1 rounded-lg text-white"
+                                    style={{ backgroundColor: preset.primaryColor }}
+                                  >
+                                    Botão de Ação
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Botões de Ação do Card */}
+                            <div className="pt-3 border-t border-stone-800/80 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSalvarTemaDefinitivo(preset)}
+                                disabled={salvandoTemaNuvem}
+                                className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                                  isCurrentActive
+                                    ? 'bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-sm'
+                                    : 'bg-stone-800 hover:bg-amber-500 hover:text-stone-950 text-stone-200 border border-stone-700'
+                                }`}
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                <span>{isCurrentActive ? 'Regravar na Nuvem' : 'Gravar na Nuvem'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleAplicarPreviaTema(preset)}
+                                className="py-2 px-3 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-300 text-xs transition border border-stone-800 hover:border-stone-700 cursor-pointer"
+                                title="Ver no site sem gravar definitivamente ainda"
+                              >
+                                Prévia
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 

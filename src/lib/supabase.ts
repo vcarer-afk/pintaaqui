@@ -5,6 +5,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { ThemePreset, getPresetById, THEME_PRESETS } from './themePresets';
 
 export const DEFAULT_SUPABASE_URL = "https://fhjzbyacxbdnprpqmwmo.supabase.co";
 export const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoanpieWFjeGJkbnBycHFtd21vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MzkxNDAsImV4cCI6MjEwNjIxNTE0MH0.VRUQUDYZiVZVP_4gmVn2RVCdaMBeqTRn3AYUtvaiIeM";
@@ -350,3 +351,101 @@ export async function restaurarFotoIdealizadorNuvem(): Promise<{ success: boolea
     return { success: false, error: err?.message || 'Falha ao restaurar foto na nuvem.' };
   }
 }
+
+/**
+ * Grava o preset de cores e fontes ativo diretamente no Supabase Cloud.
+ */
+export async function salvarTemaSiteNuvem(tema: ThemePreset): Promise<{ success: boolean; latencyMs?: number; error?: string }> {
+  const startTime = performance.now();
+  try {
+    const supabase = getSupabaseClient();
+    
+    // 1. Remove qualquer configuração anterior de tema
+    await supabase
+      .from('solicitacoes_orcamento')
+      .delete()
+      .eq('tipo_servico', 'config_tema_site');
+
+    // 2. Insere o preset selecionado com timestamp
+    const payload = {
+      presetId: tema.id,
+      nome: tema.nome,
+      updatedAt: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('solicitacoes_orcamento')
+      .insert([{
+        nome_cliente: `Tema: ${tema.nome}`,
+        telefone_cliente: '11999999999',
+        cidade: 'São Paulo',
+        tipo_servico: 'config_tema_site',
+        descricao_projeto: JSON.stringify(payload),
+        status: 'ativo'
+      }]);
+
+    const latencyMs = Math.round(performance.now() - startTime);
+
+    if (error) {
+      console.error('Erro ao salvar tema no Supabase:', error);
+      return { success: false, error: error.message, latencyMs };
+    }
+
+    // Cache local imediato para abrir sem atraso
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pintaaqui_active_theme_id', tema.id);
+    }
+
+    return { success: true, latencyMs };
+  } catch (err: any) {
+    const latencyMs = Math.round(performance.now() - startTime);
+    return { success: false, error: err?.message || 'Falha ao salvar tema na nuvem.', latencyMs };
+  }
+}
+
+/**
+ * Carrega o preset de cores e fontes ativo da nuvem toda vez que o portal abre.
+ */
+export async function carregarTemaSiteNuvem(): Promise<ThemePreset | null> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('solicitacoes_orcamento')
+      .select('descricao_projeto')
+      .eq('tipo_servico', 'config_tema_site')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      if (typeof window !== 'undefined') {
+        const cachedId = localStorage.getItem('pintaaqui_active_theme_id');
+        if (cachedId) return getPresetById(cachedId);
+      }
+      return THEME_PRESETS[0];
+    }
+
+    const rawJson = data[0].descricao_projeto;
+    if (rawJson) {
+      try {
+        const parsed = JSON.parse(rawJson);
+        const preset = getPresetById(parsed.presetId);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pintaaqui_active_theme_id', preset.id);
+        }
+        return preset;
+      } catch (e) {
+        return THEME_PRESETS[0];
+      }
+    }
+
+    return THEME_PRESETS[0];
+  } catch (err) {
+    console.error('Erro ao carregar tema da nuvem:', err);
+    if (typeof window !== 'undefined') {
+      const cachedId = localStorage.getItem('pintaaqui_active_theme_id');
+      if (cachedId) return getPresetById(cachedId);
+    }
+    return THEME_PRESETS[0];
+  }
+}
+
