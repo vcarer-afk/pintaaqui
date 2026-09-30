@@ -255,3 +255,98 @@ export async function excluirPintorNuvem(id: string): Promise<{ success: boolean
     return { success: false, error: err?.message || 'Falha ao excluir registro na nuvem.' };
   }
 }
+
+/**
+ * Salva a foto do Idealizador (Vlademir Carer) diretamente na nuvem no Supabase.
+ */
+export async function salvarFotoIdealizadorNuvem(fotoUrlOuBase64: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    // 1. Remove qualquer configuração anterior de foto
+    await supabase
+      .from('solicitacoes_orcamento')
+      .delete()
+      .eq('tipo_servico', 'config_idealizador_foto');
+
+    // 2. Insere a nova foto na nuvem
+    const { error } = await supabase
+      .from('solicitacoes_orcamento')
+      .insert([{
+        nome_cliente: 'Vlademir Carer (Idealizador)',
+        telefone_cliente: '11999999999',
+        cidade: 'São Paulo',
+        tipo_servico: 'config_idealizador_foto',
+        descricao_projeto: fotoUrlOuBase64,
+        status: 'ativo'
+      }]);
+
+    if (error) {
+      console.error('Erro ao salvar foto do idealizador no Supabase:', error);
+      return { success: false, error: error.message };
+    }
+
+    // Cache local imediato para carregamento sem piscar
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pintaaqui_idealizador_foto', fotoUrlOuBase64);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Falha ao salvar foto na nuvem.' };
+  }
+}
+
+/**
+ * Carrega a foto do Idealizador diretamente do Supabase Cloud toda vez que o site abre.
+ */
+export async function carregarFotoIdealizadorNuvem(): Promise<string | null> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('solicitacoes_orcamento')
+      .select('descricao_projeto')
+      .eq('tipo_servico', 'config_idealizador_foto')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      if (typeof window !== 'undefined') {
+        return localStorage.getItem('pintaaqui_idealizador_foto');
+      }
+      return null;
+    }
+
+    const foto = data[0].descricao_projeto;
+    if (foto && typeof window !== 'undefined') {
+      localStorage.setItem('pintaaqui_idealizador_foto', foto);
+    }
+    return foto || null;
+  } catch (err) {
+    console.error('Erro ao carregar foto do idealizador da nuvem:', err);
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('pintaaqui_idealizador_foto');
+    }
+    return null;
+  }
+}
+
+/**
+ * Restaura a foto oficial inicial de Vlademir Carer e limpa a nuvem.
+ */
+export async function restaurarFotoIdealizadorNuvem(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    await supabase
+      .from('solicitacoes_orcamento')
+      .delete()
+      .eq('tipo_servico', 'config_idealizador_foto');
+
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('pintaaqui_idealizador_foto');
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Falha ao restaurar foto na nuvem.' };
+  }
+}

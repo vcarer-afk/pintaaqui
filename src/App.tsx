@@ -55,8 +55,12 @@ import {
   Filter,
   CheckCheck,
   Copy,
-  RotateCcw
+  RotateCcw,
+  Mail,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
+import vlademirPhoto from './assets/images/vlademir_carer_1790765290522.jpg';
 import { 
   testSupabaseCloudConnection, 
   ConnectionTestResult,
@@ -66,7 +70,10 @@ import {
   cadastrarPintorNuvem,
   listarPintoresNuvem,
   atualizarStatusPintorNuvem,
-  excluirPintorNuvem
+  excluirPintorNuvem,
+  salvarFotoIdealizadorNuvem,
+  carregarFotoIdealizadorNuvem,
+  restaurarFotoIdealizadorNuvem
 } from './lib/supabase';
 
 export default function App() {
@@ -85,8 +92,15 @@ export default function App() {
   // Supabase & Site Settings (Com credenciais padrão em nuvem)
   const [supabaseUrl, setSupabaseUrl] = useState(DEFAULT_SUPABASE_URL);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(DEFAULT_SUPABASE_ANON_KEY);
-  const [adminTab, setAdminTab] = useState<'pintores' | 'supabase' | 'schema' | 'geral'>('pintores');
+  const [adminTab, setAdminTab] = useState<'pintores' | 'idealizador' | 'supabase' | 'schema' | 'geral'>('pintores');
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Foto do Idealizador (Vlademir Carer) - Gravada em Nuvem e Carregada a Cada Abertura
+  const [idealizadorFoto, setIdealizadorFoto] = useState<string>(vlademirPhoto);
+  const [novaFotoInput, setNovaFotoInput] = useState<string>('');
+  const [fotoPreview, setFotoPreview] = useState<string>(vlademirPhoto);
+  const [salvandoFoto, setSalvandoFoto] = useState<boolean>(false);
+  const [fotoStatusMsg, setFotoStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Supabase Cloud Connection Test State
   const [isTestingConnection, setIsTestingConnection] = useState(false);
@@ -125,6 +139,7 @@ export default function App() {
   const [formSucesso, setFormSucesso] = useState(false);
 
   // Load saved credentials from localStorage if user updated them, else defaults
+  // e carregar Foto do Idealizador da Nuvem
   useEffect(() => {
     const savedAuth = localStorage.getItem('pintaaqui_admin_logged');
     if (savedAuth === 'true') {
@@ -134,7 +149,92 @@ export default function App() {
     const savedAnon = localStorage.getItem('pintaaqui_supabase_anon');
     if (savedUrl) setSupabaseUrl(savedUrl);
     if (savedAnon) setSupabaseAnonKey(savedAnon);
+
+    // Carregar foto do Idealizador gravada na nuvem
+    async function carregarFotoDoIdealizador() {
+      try {
+        const fotoNuvem = await carregarFotoIdealizadorNuvem();
+        if (fotoNuvem) {
+          setIdealizadorFoto(fotoNuvem);
+          setFotoPreview(fotoNuvem);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar foto do idealizador:', err);
+      }
+    }
+    carregarFotoDoIdealizador();
   }, []);
+
+  const handleFotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setFotoStatusMsg({ text: 'Por favor, selecione um arquivo de imagem válido (JPG, PNG, WEBP).', type: 'error' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Redimensionar para tamanho ideal para nuvem (máx 800x800) e comprimir
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+          setFotoPreview(compressedBase64);
+          setNovaFotoInput(compressedBase64);
+          setFotoStatusMsg({ text: 'Imagem carregada e pronta para salvar! Clique no botão abaixo para gravar na nuvem.', type: 'success' });
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSalvarFotoNuvem = async () => {
+    if (!fotoPreview) return;
+    setSalvandoFoto(true);
+    setFotoStatusMsg(null);
+    const res = await salvarFotoIdealizadorNuvem(fotoPreview);
+    setSalvandoFoto(false);
+    if (res.success) {
+      setIdealizadorFoto(fotoPreview);
+      setFotoStatusMsg({ text: 'Foto do Idealizador gravada com sucesso na nuvem! Toda vez que o site abrir, essa foto será carregada.', type: 'success' });
+    } else {
+      setFotoStatusMsg({ text: res.error || 'Erro ao gravar foto na nuvem.', type: 'error' });
+    }
+    setTimeout(() => setFotoStatusMsg(null), 5000);
+  };
+
+  const handleRestaurarFotoPadrao = async () => {
+    if (!window.confirm('Deseja restaurar a foto original de Vlademir Carer?')) return;
+    setSalvandoFoto(true);
+    setFotoStatusMsg(null);
+    await restaurarFotoIdealizadorNuvem();
+    setIdealizadorFoto(vlademirPhoto);
+    setFotoPreview(vlademirPhoto);
+    setNovaFotoInput('');
+    setSalvandoFoto(false);
+    setFotoStatusMsg({ text: 'Foto oficial original de Vlademir restaurada com sucesso!', type: 'success' });
+    setTimeout(() => setFotoStatusMsg(null), 4000);
+  };
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1885,18 +1985,148 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
 
       </main>
 
+      {/* SEÇÃO DO IDEALIZADOR DESTE PROJETO: VLADEMIR CARER */}
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 mt-16 mb-4">
+        <div className="bg-gradient-to-br from-stone-900 via-stone-900 to-stone-950 rounded-3xl p-6 sm:p-10 border border-stone-800 shadow-2xl relative overflow-hidden">
+          
+          {/* Brilho decorativo sutil de fundo */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col lg:flex-row items-center lg:items-start gap-8 lg:gap-12">
+            
+            {/* Foto do Idealizador com Moldura Nobre */}
+            <div className="shrink-0 flex flex-col items-center text-center">
+              <div className="relative group">
+                {/* Aura dourada/âmbar */}
+                <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-amber-500 to-amber-700 opacity-30 group-hover:opacity-60 blur-md transition duration-500" />
+                
+                <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-3xl overflow-hidden border-2 border-amber-500/40 bg-stone-950 shadow-2xl">
+                  <img
+                    src={idealizadorFoto}
+                    alt="Vlademir Carer - Idealizador do Pinta Aqui"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      // Fallback para caminho estático público caso necessário
+                      const target = e.currentTarget;
+                      if (!target.src.includes('vlademir-carer.jpg')) {
+                        target.src = '/vlademir-carer.jpg';
+                      }
+                    }}
+                    className="w-full h-full object-cover object-top transition duration-500 group-hover:scale-105"
+                  />
+                </div>
+
+                <div className="absolute -bottom-3 inset-x-0 flex justify-center">
+                  <span className="px-3 py-1 rounded-full bg-amber-500 text-stone-950 text-[11px] font-extrabold uppercase tracking-wider shadow-lg shadow-amber-500/30 flex items-center gap-1">
+                    <Award className="w-3.5 h-3.5" /> Idealizador
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-0.5">
+                <h4 className="text-xl font-extrabold text-white">Vlademir Carer</h4>
+                <p className="text-xs text-amber-400 font-medium">Fundador & Especialista Técnico</p>
+              </div>
+            </div>
+
+            {/* Informações e Trajetória do Idealizador */}
+            <div className="flex-1 space-y-5 text-center lg:text-left">
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider mb-2">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Idealizador deste Projeto
+                </span>
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  Quase 30 Anos Dedicados à Arte, Ciência e Prática da Boa Pintura
+                </h3>
+              </div>
+
+              <div className="space-y-3 text-stone-300 text-sm leading-relaxed">
+                <p>
+                  Com quase três décadas de vivência diária no segmento de tintas imobiliárias, <strong>Vlademir Carer</strong> acumulou um conhecimento raro e completo: passou pelo chão de fábrica das indústrias químicas, pelo atendimento técnico atrás dos balcões de lojas e, acima de tudo, esteve ao lado dos profissionais nas obras, resolvendo problemas reais de infiltração, mofo, preparação e acabamento.
+                </p>
+                <p>
+                  O <strong>Pinta Aqui</strong> nasceu dessa experiência como um projeto de vida: democratizar o conhecimento técnico da pintura para que os proprietários protejam seu lar sem desperdício de dinheiro, e ao mesmo tempo criar uma vitrine de respeito e valorização para os verdadeiros pintores profissionais do Brasil.
+                </p>
+              </div>
+
+              {/* Destaques de Autoridade */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-950/60 border border-stone-800 text-xs text-stone-200">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 font-bold">
+                    ★
+                  </div>
+                  <span>Quase 30 anos no mercado de tintas imobiliárias</span>
+                </div>
+
+                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-950/60 border border-stone-800 text-xs text-stone-200">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 font-bold">
+                    🏭
+                  </div>
+                  <span>Vivência prática em fábricas, lojas técnicas e obras</span>
+                </div>
+
+                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-950/60 border border-stone-800 text-xs text-stone-200">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 font-bold">
+                    🤝
+                  </div>
+                  <span>Defensor e mentor da valorização do pintor</span>
+                </div>
+
+                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-950/60 border border-stone-800 text-xs text-stone-200">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 font-bold">
+                    🔬
+                  </div>
+                  <span>Especialista em diagnóstico de patologias de parede</span>
+                </div>
+              </div>
+
+              {/* Frase / Citação de Mestre */}
+              <div className="p-4 rounded-2xl bg-amber-500/5 border-l-4 border-amber-500 text-stone-200 text-xs sm:text-sm italic">
+                "A pintura não é apenas estética; é proteção estrutural, conforto térmico e a realização de um sonho. Quem entende de parede economiza tempo, dinheiro e vive muito melhor."
+                <span className="block mt-1 font-bold not-italic text-amber-400 text-xs">— Vlademir Carer</span>
+              </div>
+
+              {/* Canais de Contato com o Idealizador */}
+              <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs">
+                <a 
+                  href="mailto:vcarer@gmail.com"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-200 border border-stone-700 hover:border-amber-500/50 transition font-medium"
+                >
+                  <Mail className="w-4 h-4 text-amber-400" />
+                  <span>vcarer@gmail.com</span>
+                </a>
+
+                <a 
+                  href="https://wa.me/5511999999999?text=Ol%C3%A1%20Vlademir!%20Acesse%20o%20portal%20Pinta%20Aqui%20e%20gostaria%20de%20conversar."
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-medium transition shadow-sm"
+                >
+                  <Phone className="w-4 h-4" />
+                  <span>Contato Direto no WhatsApp</span>
+                </a>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
       {/* Footer Assinado por Vlademir Carer */}
-      <footer className="bg-stone-900 text-stone-400 py-12 px-4 sm:px-6 border-t border-stone-800 mt-16 text-xs sm:text-sm">
+      <footer className="bg-stone-900 text-stone-400 py-10 px-4 sm:px-6 border-t border-stone-800 text-xs sm:text-sm">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div>
             <div className="flex items-center space-x-2">
               <span className="text-lg font-bold text-white tracking-tight">Pinta Aqui</span>
               <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium">
-                Por Vlademir Carer
+                Idealizado por Vlademir Carer
               </span>
             </div>
             <p className="text-stone-400 mt-1 text-xs max-w-md">
-              A autoridade de quase 30 anos no ramo de tintas imobiliárias compartilhada gratuitamente com quem quer valorizar e cuidar do próprio lar.
+              A autoridade de quase 30 anos no ramo de tintas imobiliárias compartilhada gratuitamente com quem quer valorizar o imóvel e valorizar o trabalho profissional.
             </p>
           </div>
 
@@ -2028,6 +2258,17 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                         {pintoresNuvem.filter(p => p.status === 'pendente').length} novo
                       </span>
                     )}
+                  </button>
+                  <button
+                    onClick={() => setAdminTab('idealizador')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
+                      adminTab === 'idealizador'
+                        ? 'bg-amber-500 text-stone-950 font-bold'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-800'
+                    }`}
+                  >
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Foto do Idealizador</span>
                   </button>
                   <button
                     onClick={() => setAdminTab('supabase')}
@@ -2278,6 +2519,160 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* Aba: Gestão da Foto do Idealizador (Vlademir Carer) */}
+                {adminTab === 'idealizador' && (
+                  <div className="space-y-6">
+                    {/* Alerta de Feedback de Gravação */}
+                    {fotoStatusMsg && (
+                      <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 border transition ${
+                        fotoStatusMsg.type === 'success'
+                          ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                          : 'bg-red-950/80 border-red-500/50 text-red-200'
+                      }`}>
+                        {fotoStatusMsg.type === 'success' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                        )}
+                        <span>{fotoStatusMsg.text}</span>
+                      </div>
+                    )}
+
+                    {/* Cabeçalho da Rotina */}
+                    <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 space-y-1">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                        <Award className="w-4 h-4" />
+                        Rotina de Troca da Foto do Idealizador (Vlademir Carer)
+                      </div>
+                      <p className="text-xs text-stone-300 leading-relaxed">
+                        Altere a foto oficial exibida no rodapé do portal. A imagem é gravada diretamente na nuvem no Supabase e carregada automaticamente toda vez que qualquer usuário abrir o site.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                      
+                      {/* Coluna 1: Preview em Tempo Real */}
+                      <div className="bg-stone-950 p-6 rounded-2xl border border-stone-800 flex flex-col items-center text-center space-y-4 shadow-xl">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+                          Pré-visualização do Rodapé
+                        </span>
+
+                        <div className="relative group my-2">
+                          {/* Aura dourada/âmbar */}
+                          <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-amber-500 to-amber-700 opacity-40 blur-md transition duration-500" />
+                          
+                          <div className="relative w-44 h-44 rounded-3xl overflow-hidden border-2 border-amber-500/50 bg-stone-900 shadow-2xl">
+                            <img
+                              src={fotoPreview || vlademirPhoto}
+                              alt="Prévia Vlademir Carer"
+                              className="w-full h-full object-cover object-top"
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                target.src = vlademirPhoto;
+                              }}
+                            />
+                          </div>
+
+                          <div className="absolute -bottom-2.5 inset-x-0 flex justify-center">
+                            <span className="px-3 py-0.5 rounded-full bg-amber-500 text-stone-950 text-[10px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1">
+                              <Award className="w-3 h-3" /> Idealizador
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-0.5 pt-1">
+                          <h5 className="font-extrabold text-white text-base">Vlademir Carer</h5>
+                          <p className="text-[11px] text-amber-400 font-medium">Fundador & Especialista Técnico</p>
+                        </div>
+
+                        <p className="text-[11px] text-stone-400 max-w-xs">
+                          Esta foto será carregada na nuvem e exibida em todas as visitas ao portal.
+                        </p>
+                      </div>
+
+                      {/* Coluna 2: Formulário de Troca & Ações */}
+                      <div className="space-y-4">
+                        
+                        {/* Opção A: Enviar Arquivo do Aparelho */}
+                        <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 space-y-3">
+                          <label className="block text-xs font-bold text-white flex items-center gap-2">
+                            <Upload className="w-4 h-4 text-amber-400" />
+                            1. Carregar Foto do Celular ou Computador
+                          </label>
+                          <p className="text-[11px] text-stone-400 leading-relaxed">
+                            Selecione uma imagem da sua galeria ou arquivos (JPG, PNG ou WEBP). Ela será otimizada automaticamente com qualidade máxima para nuvem.
+                          </p>
+
+                          <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-stone-700 hover:border-amber-500/60 rounded-xl cursor-pointer bg-stone-900/60 hover:bg-stone-900 transition">
+                            <ImageIcon className="w-6 h-6 text-amber-400 mb-1" />
+                            <span className="text-xs text-stone-200 font-medium">Toque para selecionar imagem</span>
+                            <span className="text-[10px] text-stone-500 mt-0.5">Formato quadrado ou retrato recomendado</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleFotoFileChange}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+
+                        {/* Opção B: Inserir Link Direto da Internet */}
+                        <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 space-y-2">
+                          <label className="block text-xs font-bold text-white">
+                            2. Ou Inserir Link Direto da Imagem (URL)
+                          </label>
+                          <input
+                            type="url"
+                            value={novaFotoInput}
+                            onChange={(e) => {
+                              setNovaFotoInput(e.target.value);
+                              setFotoPreview(e.target.value || vlademirPhoto);
+                            }}
+                            placeholder="https://exemplo.com/minha-foto.jpg"
+                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-white focus:border-amber-500 focus:outline-hidden font-mono"
+                          />
+                        </div>
+
+                        {/* Botões de Salvar na Nuvem e Restaurar */}
+                        <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={handleSalvarFotoNuvem}
+                            disabled={salvandoFoto || !fotoPreview}
+                            className="w-full sm:w-auto flex-1 py-3 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition transform hover:-translate-y-0.5 cursor-pointer"
+                          >
+                            {salvandoFoto ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <span>Gravando na Nuvem...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Save className="w-4 h-4" />
+                                <span>Salvar Foto na Nuvem</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleRestaurarFotoPadrao}
+                            disabled={salvandoFoto}
+                            className="w-full sm:w-auto py-3 px-4 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 text-xs flex items-center justify-center gap-1.5 transition border border-stone-700 cursor-pointer"
+                            title="Voltar para a foto inicial de Vlademir Carer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-stone-400" />
+                            <span>Restaurar Original</span>
+                          </button>
+                        </div>
+
+                      </div>
+
+                    </div>
+
                   </div>
                 )}
 
