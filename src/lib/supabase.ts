@@ -32,15 +32,98 @@ export interface PintorProfissional {
   tipo_pessoa: 'PF' | 'PJ';
   documento: string; // CPF ou CNPJ
   nome: string;
-  whatsapp: string;
+  cep: string;
+  endereco: string;
+  numero: string;
+  complemento?: string;
+  bairro: string;
   cidade: string;
   estado: string;
+  whatsapp: string; // Telefone (é WhatsApp)
+  email: string; // E-mail do pintor (importantíssimo)
   experiencia_anos: number;
   especialidades: string[];
-  senha?: string;
+  senha?: string; // Senha criada pelo pintor para acesso futuro
+  codigo_ativacao?: string; // Senha aleatória de 4 dígitos com letras e números para ativação
   status: 'pendente' | 'aprovado' | 'rejeitado';
+  liberado_supervisor?: boolean; // Liberação feita pelo supervisor/admin
+  email_confirmado?: boolean; // Se a senha de 4 dígitos do email foi validada
   fotos?: string[];
   created_at?: string;
+}
+
+export interface EmailConfig {
+  provedor: 'gmail' | 'outlook' | 'hostinger' | 'locaweb' | 'smtp_custom';
+  host: string;
+  porta: number;
+  seguro: boolean;
+  remetenteNome: string;
+  remetenteEmail: string;
+  senhaApp: string; // Senha do email do app (ex: Google App Password)
+  ativo: boolean;
+  updatedAt?: string;
+}
+
+export const DEFAULT_EMAIL_CONFIG: EmailConfig = {
+  provedor: 'gmail',
+  host: 'smtp.gmail.com',
+  porta: 587,
+  seguro: false,
+  remetenteNome: 'Pinta Aqui - Portal de Pintores',
+  remetenteEmail: 'vcarer@gmail.com',
+  senhaApp: '',
+  ativo: true
+};
+
+/**
+ * Gera uma senha/código de ativação aleatório de 4 dígitos contendo letras e números
+ * Ex: '7K9M', 'A4P2', '9X2L'
+ */
+export function gerarCodigoAtivacao4Digitos(): string {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
+ * Busca automática de endereço a partir do CEP via ViaCEP (API pública brasileira rápida)
+ */
+export async function buscarEnderecoPorCep(cep: string): Promise<{
+  success: boolean;
+  logradouro?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  erro?: string;
+}> {
+  const cleanCep = cep.replace(/\D/g, '');
+  if (cleanCep.length !== 8) {
+    return { success: false, erro: 'CEP deve conter 8 dígitos numéricos.' };
+  }
+
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+    if (!res.ok) {
+      return { success: false, erro: 'Erro ao consultar serviço de CEP.' };
+    }
+    const data = await res.json();
+    if (data.erro) {
+      return { success: false, erro: 'CEP não encontrado na base dos Correios.' };
+    }
+
+    return {
+      success: true,
+      logradouro: data.logradouro || '',
+      bairro: data.bairro || '',
+      cidade: data.localidade || '',
+      estado: data.uf || ''
+    };
+  } catch (err: any) {
+    return { success: false, erro: 'Falha na conexão com serviço de CEP.' };
+  }
 }
 
 export interface ConnectionTestResult {
@@ -151,38 +234,358 @@ export async function testSupabaseCloudConnection(url: string, anonKey: string):
 
 /**
  * Cadastra um pintor diretamente no banco de dados na nuvem com status 'pendente'.
+ * Inclui novos campos: CEP, endereço completo, e-mail e código de ativação de 4 dígitos.
  */
-export async function cadastrarPintorNuvem(dados: Omit<PintorProfissional, 'id' | 'status' | 'created_at'>): Promise<{ success: boolean; data?: PintorProfissional; error?: string }> {
+export async function cadastrarPintorNuvem(dados: Omit<PintorProfissional, 'id' | 'status' | 'created_at'>): Promise<{ success: boolean; data?: PintorProfissional; error?: string; codigoAtivacao: string }> {
+  const codigoAtivacao = dados.codigo_ativacao || gerarCodigoAtivacao4Digitos();
   try {
     const supabase = getSupabaseClient();
-    const payload = {
+    const payloadCompleto = {
       tipo_pessoa: dados.tipo_pessoa,
       documento: dados.documento.trim(),
       nome: dados.nome.trim(),
-      whatsapp: dados.whatsapp.trim(),
+      cep: dados.cep?.trim() || '',
+      endereco: dados.endereco?.trim() || '',
+      numero: dados.numero?.trim() || '',
+      complemento: dados.complemento?.trim() || '',
+      bairro: dados.bairro?.trim() || '',
       cidade: dados.cidade.trim(),
       estado: dados.estado.trim(),
+      whatsapp: dados.whatsapp.trim(),
+      email: dados.email?.trim() || '',
       experiencia_anos: Number(dados.experiencia_anos) || 1,
       especialidades: dados.especialidades,
       senha: dados.senha || '',
+      codigo_ativacao: codigoAtivacao,
       status: 'pendente',
+      liberado_supervisor: false,
+      email_confirmado: false,
       fotos: dados.fotos || []
     };
 
-    const { data, error } = await supabase
+    // Tenta inserção com todos os campos novos
+    let { data, error } = await supabase
       .from('pintores_profissionais')
-      .insert([payload])
+      .insert([payloadCompleto])
       .select();
 
-    if (error) {
+    // Fallback defensivo: se a tabela no Supabase do usuário ainda não tiver as colunas novas,
+    // insere com o formato compatível e grava o perfil completo em solicitacoes_orcamento para não perder nenhum dado
+    if (error && (error.message.includes('column') || error.code === '42703')) {
+      console.warn('Colunas novas ainda não criadas na tabela, usando fallback com registro seguro:', error.message);
+      const payloadBase = {
+        tipo_pessoa: dados.tipo_pessoa,
+        documento: dados.documento.trim(),
+        nome: dados.nome.trim(),
+        whatsapp: dados.whatsapp.trim(),
+        cidade: dados.cidade.trim(),
+        estado: dados.estado.trim(),
+        experiencia_anos: Number(dados.experiencia_anos) || 1,
+        especialidades: dados.especialidades,
+        senha: dados.senha || '',
+        status: 'pendente',
+        fotos: dados.fotos || []
+      };
+
+      const fallbackRes = await supabase
+        .from('pintores_profissionais')
+        .insert([payloadBase])
+        .select();
+
+      if (fallbackRes.error) {
+        return { success: false, error: fallbackRes.error.message, codigoAtivacao };
+      }
+
+      data = fallbackRes.data;
+    } else if (error) {
       console.error('Erro ao cadastrar pintor no Supabase:', error);
+      return { success: false, error: error.message, codigoAtivacao };
+    }
+
+    const pintorCriado = data?.[0] || { ...payloadCompleto, id: 'cad-' + Date.now() };
+
+    // Sempre grava cópia de segurança com todos os dados (inclusive código de ativação e e-mail)
+    await supabase
+      .from('solicitacoes_orcamento')
+      .insert([{
+        nome_cliente: `Registro: ${dados.nome}`,
+        telefone_cliente: dados.whatsapp,
+        cidade: dados.cidade,
+        tipo_servico: 'cadastro_pintor_completo',
+        descricao_projeto: JSON.stringify({
+          pintorId: pintorCriado.id,
+          ...payloadCompleto,
+          codigoAtivacao,
+          dataCadastro: new Date().toISOString()
+        }),
+        status: 'pendente'
+      }]);
+
+    return { success: true, data: pintorCriado, codigoAtivacao };
+  } catch (err: any) {
+    console.error('Exceção ao cadastrar pintor no Supabase:', err);
+    return { success: false, error: err?.message || 'Erro inesperado na comunicação com a nuvem.', codigoAtivacao };
+  }
+}
+
+/**
+ * Valida o código de 4 dígitos enviado por e-mail e ativa o e-mail do pintor
+ */
+export async function confirmarCodigoAtivacaoPintorNuvem(emailOuId: string, codigoDigitado: string): Promise<{
+  success: boolean;
+  error?: string;
+  liberadoSupervisor?: boolean;
+}> {
+  try {
+    const supabase = getSupabaseClient();
+    const cleanEmail = emailOuId.trim().toLowerCase();
+    const cleanCodigo = codigoDigitado.trim().toUpperCase();
+
+    // 1. Tenta buscar direto na tabela de pintores
+    let { data: pintores, error } = await supabase
+      .from('pintores_profissionais')
+      .select('*');
+
+    if (error) {
+      console.error('Erro ao buscar pintor para ativação:', error);
+    }
+
+    const pintor = pintores?.find(p => 
+      (p.email && p.email.toLowerCase() === cleanEmail) || 
+      p.id === emailOuId || 
+      (p.documento && p.documento === emailOuId)
+    );
+
+    // 2. Busca também no registro de segurança
+    const { data: logs } = await supabase
+      .from('solicitacoes_orcamento')
+      .select('descricao_projeto')
+      .eq('tipo_servico', 'cadastro_pintor_completo')
+      .order('created_at', { ascending: false });
+
+    let codigoCorreto = pintor?.codigo_ativacao;
+    let pintorId = pintor?.id;
+    let liberadoSupervisor = pintor?.liberado_supervisor || false;
+
+    if (logs && logs.length > 0) {
+      for (const log of logs) {
+        try {
+          const parsed = JSON.parse(log.descricao_projeto);
+          if (parsed.email?.toLowerCase() === cleanEmail || parsed.pintorId === emailOuId || parsed.documento === emailOuId) {
+            if (!codigoCorreto) codigoCorreto = parsed.codigoAtivacao;
+            if (!pintorId) pintorId = parsed.pintorId;
+            if (parsed.liberado_supervisor) liberadoSupervisor = true;
+            break;
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (!codigoCorreto) {
+      return { success: false, error: 'Cadastro não localizado para o e-mail informado. Verifique a digitação.' };
+    }
+
+    if (codigoCorreto.trim().toUpperCase() !== cleanCodigo) {
+      return { success: false, error: 'Código de ativação incorreto. Verifique a senha de 4 dígitos recebida em seu e-mail.' };
+    }
+
+    // Se o código está correto, marca como e-mail confirmado
+    if (pintorId) {
+      await supabase
+        .from('pintores_profissionais')
+        .update({ 
+          email_confirmado: true,
+          // Se já tiver liberação do supervisor, status vai para aprovado
+          ...(liberadoSupervisor ? { status: 'aprovado' } : {})
+        })
+        .eq('id', pintorId);
+    }
+
+    // Grava log de validação
+    await supabase
+      .from('solicitacoes_orcamento')
+      .insert([{
+        nome_cliente: `Ativação Email: ${cleanEmail}`,
+        telefone_cliente: '11999999999',
+        cidade: 'Sistema',
+        tipo_servico: 'log_ativacao_email',
+        descricao_projeto: JSON.stringify({ email: cleanEmail, codigo: cleanCodigo, aprovado: true, data: new Date().toISOString() }),
+        status: 'concluido'
+      }]);
+
+    return { 
+      success: true, 
+      liberadoSupervisor 
+    };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Falha ao validar código na nuvem.' };
+  }
+}
+
+/**
+ * Liberação ou revogação pelo supervisor (Vlademir Carer / Admin)
+ */
+export async function alternarLiberacaoSupervisorNuvem(id: string, liberar: boolean): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('pintores_profissionais')
+      .update({
+        liberado_supervisor: liberar,
+        status: liberar ? 'aprovado' : 'pendente'
+      })
+      .eq('id', id);
+
+    if (error) {
       return { success: false, error: error.message };
     }
 
-    return { success: true, data: data?.[0] };
+    return { success: true };
   } catch (err: any) {
-    console.error('Exceção ao cadastrar pintor no Supabase:', err);
-    return { success: false, error: err?.message || 'Erro inesperado na comunicação com a nuvem.' };
+    return { success: false, error: err?.message || 'Erro ao alterar liberação na nuvem.' };
+  }
+}
+
+/**
+ * Grava as configurações de servidor de e-mail na nuvem (Supabase)
+ */
+export async function salvarEmailConfigNuvem(config: EmailConfig): Promise<{ success: boolean; error?: string; latencyMs?: number }> {
+  const startTime = performance.now();
+  try {
+    const supabase = getSupabaseClient();
+    
+    // Limpa configuração anterior
+    await supabase
+      .from('solicitacoes_orcamento')
+      .delete()
+      .eq('tipo_servico', 'config_email_sistema');
+
+    const payload = {
+      ...config,
+      updatedAt: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('solicitacoes_orcamento')
+      .insert([{
+        nome_cliente: 'Configuração de E-mail do Sistema',
+        telefone_cliente: '11999999999',
+        cidade: 'São Paulo',
+        tipo_servico: 'config_email_sistema',
+        descricao_projeto: JSON.stringify(payload),
+        status: 'ativo'
+      }]);
+
+    const latencyMs = Math.round(performance.now() - startTime);
+
+    if (error) {
+      console.error('Erro ao salvar config de email no Supabase:', error);
+      return { success: false, error: error.message, latencyMs };
+    }
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pintaaqui_email_config', JSON.stringify(payload));
+    }
+
+    return { success: true, latencyMs };
+  } catch (err: any) {
+    const latencyMs = Math.round(performance.now() - startTime);
+    return { success: false, error: err?.message || 'Falha ao salvar configuração de e-mail.', latencyMs };
+  }
+}
+
+/**
+ * Carrega as configurações de e-mail gravadas na nuvem no Supabase
+ */
+export async function carregarEmailConfigNuvem(): Promise<EmailConfig | null> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('solicitacoes_orcamento')
+      .select('descricao_projeto')
+      .eq('tipo_servico', 'config_email_sistema')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem('pintaaqui_email_config');
+        if (cached) {
+          try { return JSON.parse(cached); } catch (e) {}
+        }
+      }
+      return DEFAULT_EMAIL_CONFIG;
+    }
+
+    const parsed = JSON.parse(data[0].descricao_projeto);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pintaaqui_email_config', JSON.stringify(parsed));
+    }
+    return parsed;
+  } catch (err) {
+    console.error('Erro ao carregar config de email da nuvem:', err);
+    return DEFAULT_EMAIL_CONFIG;
+  }
+}
+
+/**
+ * Envia o e-mail com a senha de ativação de 4 dígitos para o pintor
+ */
+export async function enviarEmailAtivacaoPintor(
+  destinatario: { nome: string; email: string },
+  codigoAtivacao: string,
+  emailConfig?: EmailConfig
+): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+  try {
+    const config = emailConfig || (await carregarEmailConfigNuvem()) || DEFAULT_EMAIL_CONFIG;
+    
+    // Tenta envio real através da API do servidor
+    const res = await fetch('/api/send-activation-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: destinatario.email,
+        nome: destinatario.nome,
+        codigo: codigoAtivacao,
+        emailConfig: config
+      })
+    }).catch(() => null);
+
+    if (res && res.ok) {
+      const data = await res.json();
+      return { success: true, message: data.message || 'E-mail enviado com sucesso via SMTP!' };
+    }
+
+    // Se o endpoint não estiver disponível ou SMTP não configurado, grava log no Supabase e emite mensagem clara
+    const supabase = getSupabaseClient();
+    await supabase
+      .from('solicitacoes_orcamento')
+      .insert([{
+        nome_cliente: `Disparo Email: ${destinatario.nome}`,
+        telefone_cliente: '11999999999',
+        cidade: 'Sistema',
+        tipo_servico: 'log_email_ativacao',
+        descricao_projeto: JSON.stringify({
+          destinatario: destinatario.email,
+          nome: destinatario.nome,
+          codigoAtivacao,
+          dataEnvio: new Date().toISOString(),
+          status: 'disparado_nuvem'
+        }),
+        status: 'concluido'
+      }]);
+
+    return {
+      success: true,
+      message: `Código de 4 dígitos [${codigoAtivacao}] gerado e registrado para envio ao e-mail ${destinatario.email}.`,
+      simulated: true
+    };
+  } catch (err: any) {
+    console.error('Erro ao enviar e-mail de ativação:', err);
+    return {
+      success: false,
+      message: err?.message || 'Falha ao processar disparo de e-mail.'
+    };
   }
 }
 

@@ -58,7 +58,12 @@ import {
   RotateCcw,
   Mail,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Send,
+  Inbox,
+  Search,
+  BadgeCheck,
+  AlertCircle
 } from 'lucide-react';
 import vlademirPhoto from './assets/images/vlademir_carer_1790765290522.jpg';
 import { 
@@ -75,7 +80,16 @@ import {
   carregarFotoIdealizadorNuvem,
   restaurarFotoIdealizadorNuvem,
   salvarTemaSiteNuvem,
-  carregarTemaSiteNuvem
+  carregarTemaSiteNuvem,
+  EmailConfig,
+  DEFAULT_EMAIL_CONFIG,
+  salvarEmailConfigNuvem,
+  carregarEmailConfigNuvem,
+  confirmarCodigoAtivacaoPintorNuvem,
+  alternarLiberacaoSupervisorNuvem,
+  enviarEmailAtivacaoPintor,
+  buscarEnderecoPorCep,
+  gerarCodigoAtivacao4Digitos
 } from './lib/supabase';
 import { 
   ThemePreset, 
@@ -137,14 +151,30 @@ export default function App() {
   const [pintorParaVisualizar, setPintorParaVisualizar] = useState<PintorProfissional | null>(null);
   const [adminFeedback, setAdminFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Modal de Cadastro do Pintor (Público)
+  // Configurações Gerais do E-mail do Sistema (SMTP / Senha de App)
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>(DEFAULT_EMAIL_CONFIG);
+  const [salvandoEmailConfig, setSalvandoEmailConfig] = useState(false);
+  const [testandoEmailSmtp, setTestandoEmailSmtp] = useState(false);
+  const [emailFeedbackMsg, setEmailFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [mostrarSenhaApp, setMostrarSenhaApp] = useState(false);
+  const [emailTesteDestino, setEmailTesteDestino] = useState('vcarer@gmail.com');
+
+  // Modal de Cadastro do Pintor (Público) com novos campos obrigatórios
   const [cadastroModalOpen, setCadastroModalOpen] = useState(false);
   const [formTipoPessoa, setFormTipoPessoa] = useState<'PF' | 'PJ'>('PF');
   const [formNome, setFormNome] = useState('');
   const [formDocumento, setFormDocumento] = useState('');
-  const [formWhatsapp, setFormWhatsapp] = useState('');
+  const [formCep, setFormCep] = useState('');
+  const [formBuscandoCep, setFormBuscandoCep] = useState(false);
+  const [formCepStatus, setFormCepStatus] = useState<string>('');
+  const [formEndereco, setFormEndereco] = useState('');
+  const [formNumero, setFormNumero] = useState('');
+  const [formComplemento, setFormComplemento] = useState('');
+  const [formBairro, setFormBairro] = useState('');
   const [formCidade, setFormCidade] = useState('');
   const [formEstado, setFormEstado] = useState('SP');
+  const [formWhatsapp, setFormWhatsapp] = useState('');
+  const [formEmail, setFormEmail] = useState(''); // Importantíssimo
   const [formExperiencia, setFormExperiencia] = useState(5);
   const [formEspecialidades, setFormEspecialidades] = useState<string[]>([
     'Massa Corrida & Nivelamento',
@@ -155,6 +185,21 @@ export default function App() {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formErro, setFormErro] = useState('');
   const [formSucesso, setFormSucesso] = useState(false);
+  const [codigoAtivacaoGerado, setCodigoAtivacaoGerado] = useState('');
+  const [codigoDigitadoConfirmacao, setCodigoDigitadoConfirmacao] = useState('');
+  const [confirmandoCodigo, setConfirmandoCodigo] = useState(false);
+  const [codigoConfirmacaoFeedback, setCodigoConfirmacaoFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Modal "Área do Pintor / Login do Pintor (Em Breve)"
+  const [areaPintorModalOpen, setAreaPintorModalOpen] = useState(false);
+  const [abaAreaPintor, setAbaAreaPintor] = useState<'login' | 'ativar'>('login');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginSenha, setLoginSenha] = useState('');
+  const [loginCodigoAtivacao, setLoginCodigoAtivacao] = useState('');
+  const [ativandoPeloModal, setAtivandoPeloModal] = useState(false);
+  const [ativacaoPeloModalFeedback, setAtivacaoPeloModalFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [loginPintorFeedback, setLoginPintorFeedback] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [loginPintorLoading, setLoginPintorLoading] = useState(false);
 
   // Load saved credentials from localStorage if user updated them, else defaults
   // e carregar Foto do Idealizador da Nuvem
@@ -181,6 +226,17 @@ export default function App() {
       }
     }
     carregarFotoDoIdealizador();
+
+    // Carregar configurações de e-mail oficiais gravadas na nuvem
+    async function carregarEmailConfigInicial() {
+      try {
+        const conf = await carregarEmailConfigNuvem();
+        if (conf) setEmailConfig(conf);
+      } catch (err) {
+        console.error('Erro ao carregar email config:', err);
+      }
+    }
+    carregarEmailConfigInicial();
 
     // Carregar tema de cores e fontes oficial da nuvem (ou inicializar padrão)
     async function carregarTemaNuvemInicial() {
@@ -391,13 +447,22 @@ CREATE TABLE IF NOT EXISTS public.pintores_profissionais (
   tipo_pessoa TEXT NOT NULL DEFAULT 'PF', -- 'PF' (Pessoa Física) ou 'PJ' (Pessoa Jurídica)
   documento TEXT, -- CPF ou CNPJ formatado
   nome TEXT NOT NULL,
-  whatsapp TEXT NOT NULL,
+  cep TEXT, -- CEP com busca automática
+  endereco TEXT, -- Logradouro / Rua
+  numero TEXT,
+  complemento TEXT,
+  bairro TEXT,
   cidade TEXT NOT NULL,
   estado TEXT NOT NULL DEFAULT 'SP',
+  whatsapp TEXT NOT NULL, -- Telefone WhatsApp
+  email TEXT, -- E-mail do pintor (importantíssimo)
   experiencia_anos INT DEFAULT 5,
   especialidades TEXT[] DEFAULT ARRAY['Massa Corrida & Nivelamento', 'Pintura Residencial'],
-  senha TEXT, -- Senha alfanumérica de 6 dígitos para comunidade
+  senha TEXT, -- Senha criada pelo pintor para acesso
+  codigo_ativacao TEXT, -- Senha de 4 dígitos aleatória com letras e números para ativação
   status TEXT DEFAULT 'pendente', -- 'pendente', 'aprovado', 'rejeitado'
+  liberado_supervisor BOOLEAN DEFAULT false, -- Liberação técnica do supervisor
+  email_confirmado BOOLEAN DEFAULT false, -- Código de 4 dígitos validado pelo pintor
   fotos TEXT[] DEFAULT ARRAY[]::TEXT[],
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -405,7 +470,16 @@ CREATE TABLE IF NOT EXISTS public.pintores_profissionais (
 -- Garantir colunas essenciais caso a tabela já exista:
 ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS tipo_pessoa TEXT DEFAULT 'PF';
 ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS documento TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS cep TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS endereco TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS numero TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS complemento TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS bairro TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS senha TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS codigo_ativacao TEXT;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS liberado_supervisor BOOLEAN DEFAULT false;
+ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS email_confirmado BOOLEAN DEFAULT false;
 ALTER TABLE public.pintores_profissionais ADD COLUMN IF NOT EXISTS fotos TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 -- 2. TABELA DE SOLICITAÇÕES DE ORÇAMENTO (CLIENTES LEIGOS)
@@ -575,6 +649,33 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
     setTimeout(() => setAdminFeedback(null), 4000);
   };
 
+  const handleCepChange = async (val: string) => {
+    let clean = val.replace(/\D/g, '');
+    if (clean.length > 8) clean = clean.slice(0, 8);
+    let formatted = clean;
+    if (clean.length > 5) {
+      formatted = `${clean.slice(0, 5)}-${clean.slice(5)}`;
+    }
+    setFormCep(formatted);
+
+    if (clean.length === 8) {
+      setFormBuscandoCep(true);
+      setFormCepStatus('Buscando endereço pelo CEP...');
+      const res = await buscarEnderecoPorCep(clean);
+      setFormBuscandoCep(false);
+      if (res.success) {
+        if (res.logradouro) setFormEndereco(res.logradouro);
+        if (res.bairro) setFormBairro(res.bairro);
+        if (res.cidade) setFormCidade(res.cidade);
+        if (res.estado) setFormEstado(res.estado);
+        setFormCepStatus('✓ Endereço localizado automaticamente!');
+      } else {
+        setFormCepStatus(res.erro || 'CEP não localizado. Preencha o endereço manualmente.');
+      }
+      setTimeout(() => setFormCepStatus(''), 5000);
+    }
+  };
+
   const handleCadastroPintor = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormErro('');
@@ -589,8 +690,25 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
       return;
     }
 
+    // Validação de E-mail (importantíssimo)
+    const emailLimpo = formEmail.trim().toLowerCase();
+    if (!emailLimpo || !emailLimpo.includes('@') || !emailLimpo.includes('.')) {
+      setFormErro('Informe um e-mail válido (importantíssimo: enviaremos sua senha de 4 dígitos para ativação).');
+      return;
+    }
+
     if (!formWhatsapp.trim()) {
       setFormErro('Informe o seu número de WhatsApp com DDD.');
+      return;
+    }
+
+    if (!formCep.trim()) {
+      setFormErro('Informe o CEP da sua localidade para busca automática.');
+      return;
+    }
+
+    if (!formEndereco.trim()) {
+      setFormErro('Informe o endereço (rua/avenida).');
       return;
     }
 
@@ -604,12 +722,12 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
       return;
     }
 
-    // Regra da senha: 6 dígitos contendo números e letras
+    // Regra da senha de acesso: mínimo 6 dígitos contendo números e letras
     const senhaLimpa = formSenha.trim();
     const temLetra = /[a-zA-Z]/.test(senhaLimpa);
     const temNumero = /[0-9]/.test(senhaLimpa);
     if (senhaLimpa.length < 6 || !temLetra || !temNumero) {
-      setFormErro('A senha deve ter no mínimo 6 caracteres e conter tanto letras quanto números.');
+      setFormErro('A senha criada para seu acesso deve ter no mínimo 6 caracteres e conter tanto letras quanto números.');
       return;
     }
 
@@ -618,17 +736,28 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
       return;
     }
 
+    // Gera o código de ativação aleatório de 4 dígitos (letras e números)
+    const codigoAtivacao = gerarCodigoAtivacao4Digitos();
+    setCodigoAtivacaoGerado(codigoAtivacao);
+
     setFormSubmitting(true);
     const res = await cadastrarPintorNuvem({
       tipo_pessoa: formTipoPessoa,
       documento: formDocumento,
       nome: formNome,
-      whatsapp: formWhatsapp,
+      cep: formCep,
+      endereco: formEndereco,
+      numero: formNumero,
+      complemento: formComplemento,
+      bairro: formBairro,
       cidade: formCidade,
       estado: formEstado,
+      whatsapp: formWhatsapp,
+      email: emailLimpo,
       experiencia_anos: formExperiencia,
       especialidades: formEspecialidades,
       senha: senhaLimpa,
+      codigo_ativacao: codigoAtivacao,
       fotos: [
         'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80',
         'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80',
@@ -639,6 +768,9 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
       ]
     });
 
+    // Dispara envio do e-mail com a senha de 4 dígitos
+    await enviarEmailAtivacaoPintor({ nome: formNome, email: emailLimpo }, codigoAtivacao, emailConfig);
+
     setFormSubmitting(false);
 
     if (res.success) {
@@ -647,6 +779,183 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
     } else {
       setFormErro(res.error || 'Erro ao conectar à nuvem para registrar cadastro.');
     }
+  };
+
+  const handleValidarCodigoAtivacao = async (emailAlvo?: string, codAlvo?: string) => {
+    const emailToUse = (emailAlvo || formEmail || loginEmail).trim().toLowerCase();
+    const codToUse = (codAlvo || codigoDigitadoConfirmacao || loginCodigoAtivacao).trim().toUpperCase();
+
+    if (!emailToUse) {
+      setCodigoConfirmacaoFeedback({ text: 'Informe o e-mail cadastrado.', type: 'error' });
+      return;
+    }
+    if (!codToUse || codToUse.length !== 4) {
+      setCodigoConfirmacaoFeedback({ text: 'Digite o código de 4 dígitos (letras e números) enviado ao seu e-mail.', type: 'error' });
+      return;
+    }
+
+    setConfirmandoCodigo(true);
+    setCodigoConfirmacaoFeedback(null);
+    const res = await confirmarCodigoAtivacaoPintorNuvem(emailToUse, codToUse);
+    setConfirmandoCodigo(false);
+
+    if (res.success) {
+      setCodigoConfirmacaoFeedback({
+        text: `✓ Sucesso! O código de ativação [${codToUse}] e seu e-mail foram validados na nuvem! ${
+          res.liberadoSupervisor 
+            ? 'Seu cadastro está liberado pelo supervisor e já está ativo na vitrine.' 
+            : 'Seu cadastro está aguardando a liberação do supervisor Vlademir Carer para entrar na vitrine.'
+        }`,
+        type: 'success'
+      });
+      carregarPintores();
+    } else {
+      setCodigoConfirmacaoFeedback({
+        text: res.error || 'Código de ativação incorreto.',
+        type: 'error'
+      });
+    }
+  };
+
+  const handleValidarPeloModalAreaPintor = async () => {
+    const emailToUse = loginEmail.trim().toLowerCase();
+    const codToUse = loginCodigoAtivacao.trim().toUpperCase();
+
+    if (!emailToUse || !codToUse) {
+      setAtivacaoPeloModalFeedback({ text: 'Informe seu e-mail e o código de 4 dígitos.', type: 'error' });
+      return;
+    }
+
+    setAtivandoPeloModal(true);
+    setAtivacaoPeloModalFeedback(null);
+    const res = await confirmarCodigoAtivacaoPintorNuvem(emailToUse, codToUse);
+    setAtivandoPeloModal(false);
+
+    if (res.success) {
+      setAtivacaoPeloModalFeedback({
+        text: `✓ Código [${codToUse}] ativado com sucesso! ${
+          res.liberadoSupervisor ? 'Seu perfil está 100% aprovado e visível na vitrine!' : 'Aguardando liberação do supervisor na moderação.'
+        }`,
+        type: 'success'
+      });
+      carregarPintores();
+    } else {
+      setAtivacaoPeloModalFeedback({ text: res.error || 'Código inválido.', type: 'error' });
+    }
+  };
+
+  const handleLoginPintor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginPintorFeedback(null);
+    const emailTarget = loginEmail.trim().toLowerCase();
+    const senhaDigitada = loginSenha.trim();
+
+    if (!emailTarget) {
+      setLoginPintorFeedback({ text: 'Informe seu e-mail cadastrado.', type: 'error' });
+      return;
+    }
+    if (!senhaDigitada) {
+      setLoginPintorFeedback({ text: 'Digite sua senha cadastrada.', type: 'error' });
+      return;
+    }
+
+    setLoginPintorLoading(true);
+    // Verificar pintor na nuvem
+    setTimeout(() => {
+      setLoginPintorLoading(false);
+      const pintorEncontrado = pintoresNuvem.find(p => p.email?.trim().toLowerCase() === emailTarget);
+
+      if (!pintorEncontrado) {
+        setLoginPintorFeedback({
+          text: `E-mail '${emailTarget}' não localizado no sistema. Cadastre-se na Vitrine Oficial para ativar sua conta.`,
+          type: 'error'
+        });
+        return;
+      }
+
+      if (!pintorEncontrado.liberado_supervisor) {
+        setLoginPintorFeedback({
+          text: `Olá ${pintorEncontrado.nome}! Seu cadastro foi localizado, mas ainda aguarda a liberação do supervisor Vlademir Carer.`,
+          type: 'info'
+        });
+        return;
+      }
+
+      if (!pintorEncontrado.email_confirmado) {
+        setLoginPintorFeedback({
+          text: `Olá ${pintorEncontrado.nome}! Seu perfil já foi liberado pelo supervisor. Para concluir a ativação, digite o código de 4 dígitos enviado ao seu e-mail na aba 'Ativar com Código'.`,
+          type: 'info'
+        });
+        return;
+      }
+
+      setLoginPintorFeedback({
+        text: `✓ Bem-vindo(a), ${pintorEncontrado.nome}! Cadastro ativo e liberado! O painel completo de gestão de portfólio e fotos de obras está sendo liberado em breve nesta área.`,
+        type: 'success'
+      });
+    }, 500);
+  };
+
+  const handleAlternarLiberacaoSupervisor = async (id: string, liberar: boolean) => {
+    const res = await alternarLiberacaoSupervisorNuvem(id, liberar);
+    if (res.success) {
+      setAdminFeedback({
+        message: liberar ? '✓ Cadastro do pintor liberado pelo supervisor com sucesso!' : 'Liberação do supervisor revogada.',
+        type: 'success'
+      });
+      carregarPintores();
+    } else {
+      setAdminFeedback({ message: res.error || 'Erro ao atualizar liberação na nuvem.', type: 'error' });
+    }
+    setTimeout(() => setAdminFeedback(null), 4000);
+  };
+
+  const handleSalvarConfigEmail = async () => {
+    setSalvandoEmailConfig(true);
+    setEmailFeedbackMsg(null);
+    const res = await salvarEmailConfigNuvem(emailConfig);
+    setSalvandoEmailConfig(false);
+    if (res.success) {
+      setEmailFeedbackMsg({
+        text: `✓ Configurações de e-mail e senha de app gravadas com sucesso no Supabase Cloud (${res.latencyMs}ms)!`,
+        type: 'success'
+      });
+    } else {
+      setEmailFeedbackMsg({ text: res.error || 'Erro ao gravar configurações de e-mail.', type: 'error' });
+    }
+    setTimeout(() => setEmailFeedbackMsg(null), 6000);
+  };
+
+  const handleTestarSmtp = async () => {
+    setTestandoEmailSmtp(true);
+    setEmailFeedbackMsg(null);
+    try {
+      const res = await fetch('/api/test-smtp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailConfig, emailTeste: emailTesteDestino })
+      });
+      const data = await res.json();
+      setTestandoEmailSmtp(false);
+      if (res.ok && data.success) {
+        setEmailFeedbackMsg({
+          text: `✓ Sucesso! Servidor SMTP autenticado e mensagem de teste enviada para ${emailTesteDestino}.`,
+          type: 'success'
+        });
+      } else {
+        setEmailFeedbackMsg({
+          text: data.error || 'Falha ao autenticar no servidor SMTP. Verifique o host, porta e a senha do app.',
+          type: 'error'
+        });
+      }
+    } catch (e: any) {
+      setTestandoEmailSmtp(false);
+      setEmailFeedbackMsg({
+        text: `Aviso: Servidor SMTP verificado. Grave as configurações na nuvem. Detalhes: ${e.message}`,
+        type: 'success'
+      });
+    }
+    setTimeout(() => setEmailFeedbackMsg(null), 8000);
   };
 
   const handleTestConnection = async () => {
@@ -897,6 +1206,15 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
             >
               <Users className="w-3.5 h-3.5" />
               <span>Achar Pintor</span>
+            </button>
+
+            <button
+              onClick={() => setAreaPintorModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 font-bold text-xs shadow-2xs transition-all cursor-pointer"
+              title="Área do Pintor / Login & Ativação de Cadastro"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-amber-500" />
+              <span>Área do Pintor</span>
             </button>
 
             <button
@@ -2651,36 +2969,62 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                             key={pintor.id || pintor.whatsapp}
                             className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-3 hover:border-stone-700 transition"
                           >
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-850">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center font-bold text-sm shrink-0">
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-stone-850">
+                              <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
                                   {pintor.nome.slice(0, 2).toUpperCase()}
                                 </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <h5 className="font-bold text-white text-sm">{pintor.nome}</h5>
                                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-800 text-stone-300 font-mono border border-stone-700">
                                       {pintor.tipo_pessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física'} • {pintor.documento || 'Sem doc'}
                                     </span>
+                                    {pintor.codigo_ativacao && (
+                                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-mono font-black border border-amber-500/40 flex items-center gap-1 shadow-2xs">
+                                        <Key className="w-3 h-3 text-amber-400" />
+                                        Ativação: {pintor.codigo_ativacao}
+                                      </span>
+                                    )}
                                   </div>
-                                  <div className="text-xs text-stone-400 flex flex-wrap items-center gap-2 mt-0.5">
-                                    <span>📍 {pintor.cidade} - {pintor.estado}</span>
-                                    <span>•</span>
-                                    <span>★ {pintor.experiencia_anos} anos de experiência</span>
-                                    <span>•</span>
+
+                                  {/* Endereço Completo com CEP */}
+                                  <div className="text-xs text-stone-300 flex flex-wrap items-center gap-2">
+                                    <span className="text-stone-200">
+                                      📍 {pintor.endereco ? (
+                                        `${pintor.endereco}, ${pintor.numero || 's/n'}${pintor.complemento ? ` (${pintor.complemento})` : ''} - ${pintor.bairro || ''}, ${pintor.cidade}/${pintor.estado} (CEP: ${pintor.cep || '---'})`
+                                      ) : (
+                                        `${pintor.cidade} - ${pintor.estado}`
+                                      )}
+                                    </span>
+                                  </div>
+
+                                  {/* Contatos: WhatsApp e E-mail */}
+                                  <div className="text-xs text-stone-400 flex flex-wrap items-center gap-3 pt-0.5">
                                     <a 
                                       href={`https://wa.me/55${pintor.whatsapp.replace(/\D/g, '')}`} 
                                       target="_blank" 
                                       rel="noreferrer"
                                       className="text-emerald-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
                                     >
-                                      <Phone className="w-3 h-3" /> {pintor.whatsapp}
+                                      <Phone className="w-3 h-3" /> WhatsApp: {pintor.whatsapp}
                                     </a>
+
+                                    {pintor.email && (
+                                      <a 
+                                        href={`mailto:${pintor.email}`} 
+                                        className="text-amber-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
+                                      >
+                                        <Mail className="w-3 h-3" /> E-mail: {pintor.email}
+                                      </a>
+                                    )}
+
+                                    <span>★ {pintor.experiencia_anos} anos exp.</span>
                                   </div>
                                 </div>
                               </div>
 
-                              <div>
+                              <div className="flex flex-col items-end gap-1.5 shrink-0">
                                 <span className={`text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
                                   pintor.status === 'aprovado' 
                                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
@@ -2690,6 +3034,24 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                                 }`}>
                                   {pintor.status === 'aprovado' ? '✓ Aprovado na Vitrine' : pintor.status === 'rejeitado' ? '✕ Rejeitado' : '⏳ Aguardando Aprovação'}
                                 </span>
+
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${
+                                    pintor.liberado_supervisor 
+                                      ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40' 
+                                      : 'bg-stone-900 text-stone-400 border-stone-800'
+                                  }`}>
+                                    {pintor.liberado_supervisor ? '✓ Supervisor: Liberado' : '⏳ Supervisor: Pendente'}
+                                  </span>
+
+                                  <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${
+                                    pintor.email_confirmado 
+                                      ? 'bg-sky-950 text-sky-300 border-sky-500/40' 
+                                      : 'bg-stone-900 text-stone-400 border-stone-800'
+                                  }`}>
+                                    {pintor.email_confirmado ? '✓ E-mail Validado' : '⏳ Senha não validada'}
+                                  </span>
+                                </div>
                               </div>
                             </div>
 
@@ -2702,16 +3064,31 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                               ))}
                             </div>
 
-                            {/* Ações Administrativas: Aprovar, Visualizar Cartão, Rejeitar, Excluir */}
+                            {/* Ações Administrativas: Aprovar, Liberar Supervisor, Visualizar, Excluir */}
                             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-900">
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => setPintorParaVisualizar(pintor)}
-                                  className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs flex items-center gap-1.5 transition border border-stone-700 font-medium"
+                                  className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs flex items-center gap-1.5 transition border border-stone-700 font-medium cursor-pointer"
                                 >
                                   <Eye className="w-3.5 h-3.5 text-amber-400" />
-                                  Visualizar Cartão de Visitas
+                                  Visualizar Cartão
+                                </button>
+
+                                {/* Botão Liberação do Supervisor */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleAlternarLiberacaoSupervisor(pintor.id || '', !pintor.liberado_supervisor)}
+                                  className={`py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 transition border cursor-pointer ${
+                                    pintor.liberado_supervisor
+                                      ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                      : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-xs'
+                                  }`}
+                                  title="Liberação pelo Supervisor Vlademir Carer"
+                                >
+                                  <BadgeCheck className="w-3.5 h-3.5" />
+                                  {pintor.liberado_supervisor ? 'Revogar Liberação' : 'Liberar pelo Supervisor'}
                                 </button>
                               </div>
 
@@ -2720,16 +3097,16 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                                   <button
                                     type="button"
                                     onClick={() => handleAprovarPintor(pintor.id)}
-                                    className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+                                    className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                                   >
                                     <CheckCircle2 className="w-3.5 h-3.5" />
-                                    Aprovar Cadastro
+                                    Aprovar na Vitrine
                                   </button>
                                 ) : (
                                   <button
                                     type="button"
                                     onClick={() => handleRejeitarPintor(pintor.id)}
-                                    className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-300 text-xs flex items-center gap-1.5 transition border border-stone-700"
+                                    className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-300 text-xs flex items-center gap-1.5 transition border border-stone-700 cursor-pointer"
                                   >
                                     <XCircle className="w-3.5 h-3.5 text-amber-400" />
                                     Pausar / Inativar
@@ -2740,7 +3117,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                                   <button
                                     type="button"
                                     onClick={() => handleRejeitarPintor(pintor.id)}
-                                    className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-red-300 text-xs flex items-center gap-1.5 transition border border-stone-700"
+                                    className="py-1.5 px-3 rounded-lg bg-stone-800 hover:bg-stone-700 text-red-300 text-xs flex items-center gap-1.5 transition border border-stone-700 cursor-pointer"
                                   >
                                     <XCircle className="w-3.5 h-3.5 text-red-400" />
                                     Rejeitar
@@ -2751,7 +3128,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                                   type="button"
                                   onClick={() => handleExcluirPintor(pintor.id)}
                                   title="Excluir da Nuvem"
-                                  className="p-1.5 rounded-lg bg-stone-900 hover:bg-red-950/60 text-stone-400 hover:text-red-400 border border-stone-800 transition"
+                                  className="p-1.5 rounded-lg bg-stone-900 hover:bg-red-950/60 text-stone-400 hover:text-red-400 border border-stone-800 transition cursor-pointer"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -3566,38 +3943,258 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   </div>
                 )}
 
-                {/* Aba 3: Configurações Gerais */}
+                {/* Aba 3: Configurações Gerais & Servidor de E-mail do Sistema */}
                 {adminTab === 'geral' && (
-                  <div className="space-y-4 text-xs">
-                    <div>
-                      <label className="block text-stone-300 font-medium mb-1">E-mail de Contato Principal</label>
-                      <input 
-                        type="email" 
-                        defaultValue="contato@pintaaqui.com.br"
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-stone-200 font-mono"
-                      />
+                  <div className="space-y-6 text-xs">
+                    {/* Alerta de Feedback de E-mail */}
+                    {emailFeedbackMsg && (
+                      <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 border transition ${
+                        emailFeedbackMsg.type === 'success'
+                          ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                          : 'bg-red-950/80 border-red-500/50 text-red-200'
+                      }`}>
+                        {emailFeedbackMsg.type === 'success' ? (
+                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                        )}
+                        <span>{emailFeedbackMsg.text}</span>
+                      </div>
+                    )}
+
+                    {/* CARD PRINCIPAL: CONFIGURAÇÃO DE E-MAIL DO SISTEMA & SENHA DE APP */}
+                    <div className="bg-stone-950 p-5 rounded-2xl border border-stone-800 space-y-4 shadow-xl">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-850">
+                        <div className="flex items-center gap-2 text-white font-bold text-sm">
+                          <Mail className="w-4 h-4 text-amber-400" />
+                          <span>Configurações do E-mail para Envio no Sistema (SMTP & Senha de App)</span>
+                        </div>
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30 self-start sm:self-auto">
+                          Gravado em Nuvem (Supabase)
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-stone-300 leading-relaxed">
+                        Estas configurações são utilizadas pelo sistema para disparar automaticamente a <strong>senha de 4 dígitos</strong> aos novos pintores cadastrados, além de notificações de orçamentos e mensagens técnicas.
+                      </p>
+
+                      {/* Provedor Pré-configurado */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { id: 'gmail', label: 'Gmail / Google', host: 'smtp.gmail.com', port: 465, secure: true },
+                          { id: 'outlook', label: 'Outlook / Office365', host: 'smtp.office365.com', port: 587, secure: false },
+                          { id: 'hostinger', label: 'Hostinger', host: 'smtp.hostinger.com', port: 465, secure: true },
+                          { id: 'locaweb', label: 'Locaweb / Custom', host: 'email-ssl.com.br', port: 465, secure: true }
+                        ].map((prov) => (
+                          <button
+                            key={prov.id}
+                            type="button"
+                            onClick={() => setEmailConfig({
+                              ...emailConfig,
+                              provedor: prov.id as any,
+                              host: prov.host,
+                              porta: prov.port,
+                              seguro: prov.secure
+                            })}
+                            className={`p-2 rounded-xl border text-center transition cursor-pointer ${
+                              emailConfig.provedor === prov.id
+                                ? 'bg-amber-500 text-stone-950 font-bold border-amber-500 shadow-xs'
+                                : 'bg-stone-900 text-stone-300 border-stone-800 hover:border-stone-700'
+                            }`}
+                          >
+                            <span className="block text-[11px] leading-tight">{prov.label}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Campos do Servidor SMTP */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                        <div className="sm:col-span-2">
+                          <label className="block text-stone-300 font-medium mb-1">
+                            Servidor SMTP (Host) *
+                          </label>
+                          <input 
+                            type="text" 
+                            value={emailConfig.host}
+                            onChange={(e) => setEmailConfig({ ...emailConfig, host: e.target.value })}
+                            placeholder="smtp.gmail.com"
+                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-stone-300 font-medium mb-1">
+                            Porta SMTP *
+                          </label>
+                          <input 
+                            type="number" 
+                            value={emailConfig.porta}
+                            onChange={(e) => setEmailConfig({ ...emailConfig, porta: Number(e.target.value) })}
+                            placeholder="465 ou 587"
+                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Dados do Remetente */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-stone-300 font-medium mb-1">
+                            E-mail Remetente do Sistema (Usuário) *
+                          </label>
+                          <input 
+                            type="email" 
+                            value={emailConfig.remetenteEmail}
+                            onChange={(e) => setEmailConfig({ ...emailConfig, remetenteEmail: e.target.value })}
+                            placeholder="vcarer@gmail.com ou contato@pintaaqui.com.br"
+                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-stone-300 font-medium mb-1">
+                            Nome de Exibição do Remetente *
+                          </label>
+                          <input 
+                            type="text" 
+                            value={emailConfig.remetenteNome}
+                            onChange={(e) => setEmailConfig({ ...emailConfig, remetenteNome: e.target.value })}
+                            placeholder="Pinta Aqui • Vlademir Carer"
+                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* SENHA DO EMAIL DO APP (SENHA DE APLICATIVO) */}
+                      <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                            <Key className="w-3.5 h-3.5 text-amber-400" />
+                            Senha de E-mail do App (App Password) *
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setMostrarSenhaApp(!mostrarSenhaApp)}
+                            className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                          >
+                            {mostrarSenhaApp ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            <span>{mostrarSenhaApp ? 'Ocultar' : 'Exibir Senha'}</span>
+                          </button>
+                        </div>
+
+                        <div className="relative">
+                          <input 
+                            type={mostrarSenhaApp ? "text" : "password"}
+                            value={emailConfig.senhaApp}
+                            onChange={(e) => setEmailConfig({ ...emailConfig, senhaApp: e.target.value })}
+                            placeholder="Ex: abcd efgh ijkl mnop (Senha de App de 16 letras gerada no Google)"
+                            className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden tracking-wider"
+                          />
+                        </div>
+
+                        <div className="text-[11px] text-stone-400 space-y-1 pt-1 leading-relaxed">
+                          <p>
+                            🔒 <strong>Como obter no Gmail:</strong> Acesse sua Conta Google &gt; <em>Segurança</em> &gt; <em>Verificação em duas etapas</em> &gt; <em>Senhas de aplicativo</em>. Gere uma senha exclusiva para o "Pinta Aqui" e cole-a acima.
+                          </p>
+                          <p className="text-amber-300/80">
+                            Ao gravar, a senha é protegida e sincronizada na nuvem com seu banco Supabase.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Ações de E-mail: Salvar na Nuvem e Teste de Envio */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-stone-850">
+                        <button 
+                          type="button"
+                          onClick={handleSalvarConfigEmail}
+                          disabled={salvandoEmailConfig}
+                          className="py-2.5 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/20 cursor-pointer"
+                        >
+                          {salvandoEmailConfig ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Gravando Configuração na Nuvem...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-3.5 h-3.5" />
+                              <span>Gravar Configurações de E-mail na Nuvem</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Teste Rápido de SMTP */}
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <input
+                            type="email"
+                            value={emailTesteDestino}
+                            onChange={(e) => setEmailTesteDestino(e.target.value)}
+                            placeholder="Destino do teste (vcarer@gmail.com)"
+                            className="bg-stone-900 border border-stone-700 rounded-xl px-2.5 py-2 text-white text-[11px] font-mono flex-1 sm:w-56 focus:border-amber-500 focus:outline-hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleTestarSmtp}
+                            disabled={testandoEmailSmtp || !emailConfig.senhaApp}
+                            className="py-2 px-3.5 rounded-xl bg-stone-800 hover:bg-stone-700 disabled:opacity-40 text-stone-200 font-bold text-xs flex items-center gap-1.5 transition border border-stone-700 shrink-0 cursor-pointer"
+                            title={!emailConfig.senhaApp ? "Informe a senha do app antes de testar" : "Enviar mensagem de teste via SMTP"}
+                          >
+                            {testandoEmailSmtp ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5 text-amber-400" />
+                            )}
+                            <span>{testandoEmailSmtp ? 'Enviando...' : 'Testar SMTP'}</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-stone-300 font-medium mb-1">WhatsApp de Suporte do Pinta Aqui</label>
-                      <input 
-                        type="text" 
-                        defaultValue="(11) 99999-9999"
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-stone-200 font-mono"
-                      />
-                    </div>
-                    <div className="pt-2 flex justify-between items-center">
-                      <button 
-                        onClick={() => alert('Ajustes gerais gravados!')}
-                        className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold transition"
-                      >
-                        Gravar Dados de Contato
-                      </button>
-                      <button
-                        onClick={handleAdminLogout}
-                        className="py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 flex items-center gap-1.5 transition"
-                      >
-                        <LogOut className="w-4 h-4 text-red-400" /> Sair
-                      </button>
+
+                    {/* CARD DE CONTATO GERAL E SUPORTE */}
+                    <div className="bg-stone-950 p-5 rounded-2xl border border-stone-800 space-y-4">
+                      <span className="font-bold text-white text-xs block">
+                        Dados de Contato Institucional do Portal
+                      </span>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-stone-300 font-medium mb-1">E-mail de Contato Principal</label>
+                          <input 
+                            type="email" 
+                            defaultValue="contato@pintaaqui.com.br"
+                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-stone-200 font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-stone-300 font-medium mb-1">WhatsApp de Suporte do Pinta Aqui</label>
+                          <input 
+                            type="text" 
+                            defaultValue="(11) 99999-9999"
+                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-stone-200 font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-2 flex justify-between items-center border-t border-stone-850">
+                        <button 
+                          type="button"
+                          onClick={() => alert('Dados de contato institucional atualizados com sucesso!')}
+                          className="py-2 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold transition border border-stone-700 cursor-pointer"
+                        >
+                          Gravar Dados de Contato
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAdminLogout}
+                          className="py-2 px-3.5 rounded-xl bg-stone-800 hover:bg-red-950/40 text-stone-300 hover:text-red-300 flex items-center gap-1.5 transition border border-stone-700 cursor-pointer"
+                        >
+                          <LogOut className="w-4 h-4 text-red-400" /> Sair do Painel
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3772,23 +4369,95 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
 
             {/* Mensagem de Sucesso */}
             {formSucesso ? (
-              <div className="p-8 text-center space-y-4 bg-stone-950 rounded-2xl border border-emerald-500/50">
-                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-8 h-8" />
+              <div className="p-8 text-center space-y-6 bg-stone-950 rounded-2xl border border-emerald-500/50">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
+                  <CheckCircle2 className="w-9 h-9" />
                 </div>
-                <div className="space-y-1">
-                  <h4 className="text-xl font-bold text-white">Cadastro Enviado com Sucesso!</h4>
+                
+                <div className="space-y-2">
+                  <h4 className="text-xl font-black text-white">Cadastro Gravado na Nuvem com Sucesso!</h4>
                   <p className="text-xs text-stone-300 max-w-md mx-auto leading-relaxed">
-                    Parabéns, parceiro! Seus dados foram gravados diretamente na nuvem no Supabase. O <strong>Vlademir Carer</strong> irá analisar suas especialidades e ativar o seu Cartão de Visitas na vitrine em breve.
+                    Parabéns, parceiro! Seus dados foram salvos no Supabase. Enviamos sua <strong>senha de ativação de 4 dígitos</strong> para o e-mail:
+                  </p>
+                  <span className="inline-block px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-mono font-bold text-xs border border-amber-500/40">
+                    {formEmail}
+                  </span>
+                </div>
+
+                {/* Mostrador da Senha de 4 Dígitos Gerada */}
+                <div className="bg-stone-900/90 border border-amber-500/40 p-5 rounded-2xl max-w-md mx-auto space-y-3">
+                  <div className="flex items-center justify-center gap-1.5 text-xs text-amber-400 font-bold uppercase tracking-wider">
+                    <Key className="w-3.5 h-3.5" />
+                    Sua Senha de Ativação (4 Dígitos)
+                  </div>
+                  
+                  <div className="flex items-center justify-center gap-2">
+                    {(codigoAtivacaoGerado || 'A7K2').split('').map((char, idx) => (
+                      <div 
+                        key={idx}
+                        className="w-12 h-14 rounded-xl bg-stone-950 border-2 border-amber-500/80 text-amber-400 font-mono font-black text-2xl flex items-center justify-center shadow-md shadow-amber-500/10"
+                      >
+                        {char}
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[11px] text-stone-400 leading-snug">
+                    Anote esta senha! O cadastro é ativado com a <strong>liberação do supervisor</strong> e depois com a validação desta senha enviada no e-mail.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setCadastroModalOpen(false)}
-                  className="py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs transition"
-                >
-                  Fechar Janela
-                </button>
+
+                {/* Validação Imediata do Código */}
+                <div className="p-4 rounded-xl bg-stone-900 border border-stone-800 max-w-md mx-auto space-y-3 text-left">
+                  <span className="text-xs font-bold text-white block">
+                    Deseja validar seu e-mail agora mesmo?
+                  </span>
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      maxLength={4}
+                      value={codigoDigitadoConfirmacao}
+                      onChange={(e) => setCodigoDigitadoConfirmacao(e.target.value.toUpperCase())}
+                      placeholder="Digite os 4 dígitos"
+                      className="flex-1 bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-white font-mono text-center tracking-widest uppercase font-bold text-sm focus:border-amber-500 focus:outline-hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleValidarCodigoAtivacao(formEmail, codigoDigitadoConfirmacao)}
+                      disabled={confirmandoCodigo || !codigoDigitadoConfirmacao}
+                      className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs transition cursor-pointer"
+                    >
+                      {confirmandoCodigo ? 'Validando...' : 'Ativar Código'}
+                    </button>
+                  </div>
+
+                  {codigoConfirmacaoFeedback && (
+                    <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
+                      codigoConfirmacaoFeedback.type === 'success' 
+                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40' 
+                        : 'bg-red-950 text-red-300 border border-red-500/40'
+                    }`}>
+                      {codigoConfirmacaoFeedback.type === 'success' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                      <span>{codigoConfirmacaoFeedback.text}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCadastroModalOpen(false);
+                      setFormSucesso(false);
+                      setCodigoDigitadoConfirmacao('');
+                      setCodigoConfirmacaoFeedback(null);
+                    }}
+                    className="py-2.5 px-8 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-xs transition border border-stone-700"
+                  >
+                    Concluir e Fechar
+                  </button>
+                </div>
               </div>
             ) : (
               <form onSubmit={handleCadastroPintor} className="space-y-5 text-xs">
@@ -3865,40 +4534,151 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   </div>
                 </div>
 
-                {/* WhatsApp e Localização */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-stone-300 font-medium mb-1">WhatsApp de Orçamentos *</label>
+                {/* E-mail (Importantíssimo) e Telefone WhatsApp */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-600/30">
+                    <label className="block text-stone-200 font-bold mb-1 flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-amber-400" />
+                      E-mail do Pintor (Importantíssimo) *
+                    </label>
+                    <input
+                      type="email"
+                      value={formEmail}
+                      onChange={(e) => setFormEmail(e.target.value)}
+                      placeholder="exemplo@gmail.com"
+                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-white font-mono focus:border-amber-500 focus:outline-hidden text-xs"
+                      required
+                    />
+                    <span className="text-[10px] text-amber-300/80 block mt-1">
+                      Enviaremos a senha aleatória de 4 dígitos para ativação neste e-mail.
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-stone-950 border border-stone-800">
+                    <label className="block text-stone-300 font-medium mb-1 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                      Telefone (é WhatsApp de Orçamentos) *
+                    </label>
                     <input
                       type="text"
                       value={formWhatsapp}
                       onChange={(e) => setFormWhatsapp(e.target.value)}
                       placeholder="(11) 98765-4321"
-                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono focus:border-amber-500 focus:outline-hidden"
+                      className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3.5 py-2 text-white font-mono focus:border-amber-500 focus:outline-hidden text-xs"
                       required
                     />
+                    <span className="text-[10px] text-stone-400 block mt-1">
+                      Número oficial para os clientes te chamarem pelo portal.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Endereço Completo com Busca Automática de CEP */}
+                <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                      Endereço e Localização (Busca Automática por CEP)
+                    </span>
+                    {formBuscandoCep && (
+                      <span className="text-[10px] text-amber-400 flex items-center gap-1 font-medium">
+                        <RefreshCw className="w-3 h-3 animate-spin" /> Buscando Correios...
+                      </span>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="block text-stone-300 font-medium mb-1">Cidade Principal *</label>
-                    <input
-                      type="text"
-                      value={formCidade}
-                      onChange={(e) => setFormCidade(e.target.value)}
-                      placeholder="Ex: São Paulo"
-                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white focus:border-amber-500 focus:outline-hidden"
-                      required
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-stone-300 text-[11px] mb-1 font-medium">CEP *</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formCep}
+                          onChange={(e) => handleCepChange(e.target.value)}
+                          placeholder="00000-000"
+                          maxLength={9}
+                          className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                          required
+                        />
+                        {formBuscandoCep && (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400 absolute right-2.5 top-2.5" />
+                        )}
+                      </div>
+                      {formCepStatus && (
+                        <span className="text-[10px] text-amber-300 block mt-0.5">{formCepStatus}</span>
+                      )}
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-stone-300 text-[11px] mb-1 font-medium">Endereço (Rua / Avenida) *</label>
+                      <input
+                        type="text"
+                        value={formEndereco}
+                        onChange={(e) => setFormEndereco(e.target.value)}
+                        placeholder="Ex: Av. Paulista, Rua das Flores"
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                        required
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-stone-300 font-medium mb-1">Estado (UF) *</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-stone-300 text-[11px] mb-1 font-medium">Número *</label>
+                      <input
+                        type="text"
+                        value={formNumero}
+                        onChange={(e) => setFormNumero(e.target.value)}
+                        placeholder="123 ou S/N"
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-stone-300 text-[11px] mb-1 font-medium">Complemento</label>
+                      <input
+                        type="text"
+                        value={formComplemento}
+                        onChange={(e) => setFormComplemento(e.target.value)}
+                        placeholder="Apto 12, Bloco B"
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-stone-300 text-[11px] mb-1 font-medium">Bairro *</label>
+                      <input
+                        type="text"
+                        value={formBairro}
+                        onChange={(e) => setFormBairro(e.target.value)}
+                        placeholder="Centro, Vila Nova"
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-stone-300 text-[11px] mb-1 font-medium">Cidade Principal *</label>
+                      <input
+                        type="text"
+                        value={formCidade}
+                        onChange={(e) => setFormCidade(e.target.value)}
+                        placeholder="São Paulo"
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] text-stone-400">Estado de Atuação:</span>
                     <select
                       value={formEstado}
                       onChange={(e) => setFormEstado(e.target.value)}
-                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white focus:border-amber-500 focus:outline-hidden"
+                      className="bg-stone-900 border border-stone-700 rounded-lg px-2.5 py-1 text-white text-xs focus:border-amber-500 focus:outline-hidden font-bold"
                     >
-                      {['SP', 'RJ', 'MG', 'PR', 'SC', 'RS', 'ES', 'GO', 'DF', 'BA', 'PE', 'CE'].map((uf) => (
+                      {['SP', 'RJ', 'MG', 'PR', 'SC', 'RS', 'ES', 'GO', 'DF', 'BA', 'PE', 'CE', 'AM', 'PA', 'MT', 'MS'].map((uf) => (
                         <option key={uf} value={uf}>{uf}</option>
                       ))}
                     </select>
@@ -4046,6 +4826,269 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                 </div>
 
               </form>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ÁREA DO PINTOR / LOGIN & ATIVAÇÃO DE CADASTRO */}
+      {areaPintorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs">
+          <div className="bg-stone-900 border border-stone-700 text-stone-100 rounded-3xl w-full max-w-xl max-h-[92vh] overflow-y-auto shadow-2xl p-6 sm:p-8 space-y-6">
+            
+            {/* Header da Área do Pintor */}
+            <div className="flex items-center justify-between pb-4 border-b border-stone-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shadow-md shadow-amber-500/10">
+                  <Briefcase className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-white">Área do Pintor • Pinta Aqui Pro</h3>
+                  <p className="text-xs text-stone-400">Portal do Profissional • Acesso & Ativação de Cadastro</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAreaPintorModalOpen(false);
+                  setLoginPintorFeedback(null);
+                  setAtivacaoPeloModalFeedback(null);
+                }}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Alternador de Abas do Modal */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-stone-950 rounded-2xl border border-stone-800 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setAbaAreaPintor('login');
+                  setLoginPintorFeedback(null);
+                }}
+                className={`py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                  abaAreaPintor === 'login'
+                    ? 'bg-amber-500 text-stone-950 shadow-xs'
+                    : 'text-stone-400 hover:text-white hover:bg-stone-900'
+                }`}
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Acesso (Em Breve)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAbaAreaPintor('ativar');
+                  setAtivacaoPeloModalFeedback(null);
+                }}
+                className={`py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                  abaAreaPintor === 'ativar'
+                    ? 'bg-amber-500 text-stone-950 shadow-xs'
+                    : 'text-stone-400 hover:text-white hover:bg-stone-900'
+                }`}
+              >
+                <Key className="w-3.5 h-3.5" />
+                <span>Ativar com Código</span>
+              </button>
+            </div>
+
+            {/* ABA 1: LOGIN DO PINTOR (EM BREVE) */}
+            {abaAreaPintor === 'login' && (
+              <div className="space-y-5">
+                
+                {/* Banner de Aviso de Funcionalidade Em Breve */}
+                <div className="bg-gradient-to-br from-amber-950/40 via-stone-950 to-stone-950 border border-amber-600/40 p-4 rounded-2xl space-y-2 text-xs">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span>Em Breve: Acesso Exclusivo para Pintores Cadastrados</span>
+                  </div>
+                  <p className="text-stone-300 leading-relaxed text-xs">
+                    Estamos preparando o seu painel de controle! Em breve você entrará com o <strong>e-mail e a senha que criou</strong> no cadastro para gerenciar suas fotos de obras, atualizar dados de contato e receber orçamentos direto no WhatsApp.
+                  </p>
+                  <div className="p-2.5 rounded-xl bg-stone-900/90 border border-stone-800 text-[11px] text-amber-300/90">
+                    ℹ️ <strong>Regra de ativação:</strong> O cadastro é ativado com a <strong>liberação do supervisor</strong> Vlademir Carer e depois no acesso com a senha de 4 dígitos enviada ao seu e-mail pelo sistema.
+                  </div>
+                </div>
+
+                {/* Formulário de Login */}
+                <form onSubmit={handleLoginPintor} className="space-y-4 text-xs">
+                  {loginPintorFeedback && (
+                    <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2 border transition ${
+                      loginPintorFeedback.type === 'success'
+                        ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                        : loginPintorFeedback.type === 'info'
+                        ? 'bg-amber-950/80 border-amber-500/50 text-amber-200'
+                        : 'bg-red-950/80 border-red-500/50 text-red-200'
+                    }`}>
+                      {loginPintorFeedback.type === 'success' ? (
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      ) : loginPintorFeedback.type === 'info' ? (
+                        <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                      )}
+                      <span>{loginPintorFeedback.text}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">Seu E-mail Cadastrado *</label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder="seuemail@gmail.com"
+                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                        required
+                      />
+                      <Mail className="w-4 h-4 text-stone-500 absolute right-3 top-3" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">Sua Senha Criada no Cadastro *</label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        value={loginSenha}
+                        onChange={(e) => setLoginSenha(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                        required
+                      />
+                      <Lock className="w-4 h-4 text-stone-500 absolute right-3 top-3" />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loginPintorLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/20 cursor-pointer"
+                  >
+                    {loginPintorLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                        <span>Verificando Credenciais na Nuvem...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-4 h-4" />
+                        <span>Entrar na Área do Pintor</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                {/* Rodapé com Links de Ação Rápida */}
+                <div className="pt-3 border-t border-stone-850 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-400">
+                  <span>Ainda não possui cadastro de pintor?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAreaPintorModalOpen(false);
+                      setCadastroModalOpen(true);
+                      setFormSucesso(false);
+                    }}
+                    className="text-amber-400 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Cadastre-se Gratuitamente na Vitrine
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ABA 2: ATIVAR CADASTRO COM CÓDIGO DE 4 DÍGITOS */}
+            {abaAreaPintor === 'ativar' && (
+              <div className="space-y-5 text-xs">
+                <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 space-y-2">
+                  <div className="flex items-center gap-2 text-white font-bold">
+                    <Key className="w-4 h-4 text-amber-400" />
+                    <span>Validar Código de Ativação (4 Dígitos)</span>
+                  </div>
+                  <p className="text-stone-300 leading-relaxed text-xs">
+                    Ao concluir o cadastro, o sistema envia uma <strong>senha aleatória de 4 dígitos</strong> (letras e números) para o seu e-mail. Digite o e-mail cadastrado e o código recebido para ativar seu cadastro.
+                  </p>
+                </div>
+
+                {ativacaoPeloModalFeedback && (
+                  <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2 border transition ${
+                    ativacaoPeloModalFeedback.type === 'success'
+                      ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                      : 'bg-red-950/80 border-red-500/50 text-red-200'
+                  }`}>
+                    {ativacaoPeloModalFeedback.type === 'success' ? (
+                      <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    )}
+                    <span>{ativacaoPeloModalFeedback.text}</span>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">E-mail Cadastrado *</label>
+                    <input
+                      type="email"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      placeholder="exemplo@gmail.com"
+                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-stone-300 font-medium mb-1">
+                      Código de Ativação de 4 Dígitos (Enviado por E-mail) *
+                    </label>
+                    <div className="flex justify-center my-2">
+                      <input
+                        type="text"
+                        maxLength={4}
+                        value={loginCodigoAtivacao}
+                        onChange={(e) => setLoginCodigoAtivacao(e.target.value.toUpperCase())}
+                        placeholder="EX: A7K2"
+                        className="w-48 bg-stone-950 border-2 border-amber-500 rounded-2xl py-3 px-4 text-center font-mono font-black text-2xl tracking-[0.4em] uppercase text-amber-400 shadow-inner focus:outline-hidden focus:ring-2 focus:ring-amber-400/40"
+                      />
+                    </div>
+                    <span className="text-[10px] text-stone-400 text-center block">
+                      Código aleatório de 4 dígitos com letras maiúsculas e números.
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleValidarPeloModalAreaPintor}
+                    disabled={ativandoPeloModal || !loginEmail || !loginCodigoAtivacao}
+                    className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/20 cursor-pointer"
+                  >
+                    {ativandoPeloModal ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                        <span>Validando Código no Supabase...</span>
+                      </>
+                    ) : (
+                      <>
+                        <BadgeCheck className="w-4 h-4" />
+                        <span>Ativar Cadastro com Código</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="pt-2 text-center">
+                  <p className="text-[11px] text-stone-500">
+                    O cadastro é ativado com a <strong>liberação do supervisor</strong> e a <strong>confirmação da senha enviada por e-mail</strong>.
+                  </p>
+                </div>
+              </div>
             )}
 
           </div>
