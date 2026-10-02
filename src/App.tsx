@@ -230,10 +230,10 @@ export default function App() {
   // Load saved credentials from localStorage if user updated them, else defaults
   // e carregar Foto do Idealizador da Nuvem
   useEffect(() => {
-    const savedAuth = localStorage.getItem('pintaaqui_admin_logged');
-    if (savedAuth === 'true') {
-      setIsAdminLoggedIn(true);
-    }
+    // Sempre exigir senha a cada entrada no painel administrativo
+    localStorage.removeItem('pintaaqui_admin_logged');
+    setIsAdminLoggedIn(false);
+
     const savedUrl = localStorage.getItem('pintaaqui_supabase_url');
     const savedAnon = localStorage.getItem('pintaaqui_supabase_anon');
     if (savedUrl) setSupabaseUrl(savedUrl);
@@ -567,7 +567,8 @@ export default function App() {
 
     if (validUser && validPass) {
       setIsAdminLoggedIn(true);
-      localStorage.setItem('pintaaqui_admin_logged', 'true');
+      // Sempre remover qualquer persistência para que ao fechar/sair do painel sempre seja solicitada a senha
+      localStorage.removeItem('pintaaqui_admin_logged');
       setAdminUser('');
       setAdminPassword('');
       setAuthError('');
@@ -579,9 +580,28 @@ export default function App() {
   const handleAdminLogout = () => {
     setIsAdminLoggedIn(false);
     localStorage.removeItem('pintaaqui_admin_logged');
+    setAdminUser('');
+    setAdminPassword('');
+    setAuthError('');
     setAdminModalOpen(false);
     setTestResult(null);
   };
+
+  const handleFecharPainelAdmin = () => {
+    handleAdminLogout();
+  };
+
+  // Fechar e bloquear painel ao pressionar ESC para sempre solicitar a senha ao retornar
+  useEffect(() => {
+    if (!adminModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleFecharPainelAdmin();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [adminModalOpen]);
 
   const handleSaveSupabaseConfig = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2987,8 +3007,14 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
 
       {/* MODAL DO PAINEL ADMINISTRATIVO (SUPABASE & CONFIGURAÇÕES) */}
       {adminModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
-          <div className="bg-stone-900 border border-stone-700 text-stone-100 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div 
+          onClick={handleFecharPainelAdmin}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-stone-900 border border-stone-700 text-stone-100 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
+          >
             
             {/* Header do Modal */}
             <div className="p-5 border-b border-stone-800 flex items-center justify-between bg-stone-950/80 sticky top-0 z-10">
@@ -3001,12 +3027,27 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   <p className="text-[11px] text-stone-400">Pinta Aqui • Gestão do Banco de Dados & Sistema</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setAdminModalOpen(false)}
-                className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {isAdminLoggedIn && (
+                  <button
+                    type="button"
+                    onClick={handleAdminLogout}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 text-xs font-semibold transition cursor-pointer"
+                    title="Sair e bloquear com senha"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sair</span>
+                  </button>
+                )}
+                <button 
+                  onClick={handleFecharPainelAdmin}
+                  className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition cursor-pointer"
+                  title="Fechar e bloquear painel"
+                  aria-label="Fechar painel"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Conteúdo do Modal: Login ou Painel */}
