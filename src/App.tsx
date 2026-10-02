@@ -101,9 +101,15 @@ import {
   applyThemeToDom 
 } from './lib/themePresets';
 import LogoPintaAqui from './components/LogoPintaAqui';
+import TermosDeUso from './components/TermosDeUso';
+import { 
+  DEFAULT_PATOLOGIA_FOTOS, 
+  carregarFotosPatologiasSalvas, 
+  salvarFotosPatologiasLocal 
+} from './lib/patologiaFotos';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'geral' | 'desvendando' | 'tipos' | 'texturas' | 'ferramentas' | 'patologias' | 'profissional'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'desvendando' | 'tipos' | 'texturas' | 'ferramentas' | 'patologias' | 'profissional' | 'termos'>('geral');
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -118,8 +124,13 @@ export default function App() {
   // Supabase & Site Settings (Com credenciais padrão em nuvem)
   const [supabaseUrl, setSupabaseUrl] = useState(DEFAULT_SUPABASE_URL);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(DEFAULT_SUPABASE_ANON_KEY);
-  const [adminTab, setAdminTab] = useState<'pintores' | 'idealizador' | 'temas' | 'supabase' | 'schema' | 'geral'>('pintores');
+  const [adminTab, setAdminTab] = useState<'pintores' | 'idealizador' | 'patologias' | 'temas' | 'supabase' | 'schema' | 'geral'>('pintores');
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Fotos das Patologias da Pintura (Gerenciáveis via Admin)
+  const [patologiaFotos, setPatologiaFotos] = useState<Record<number, string>>(carregarFotosPatologiasSalvas);
+  const [patologiaFeedbackMsg, setPatologiaFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [urlInputPatologias, setUrlInputPatologias] = useState<Record<number, string>>({});
 
   // Presets de Cores e Fontes (Gravados na Nuvem no Supabase)
   const [activeTheme, setActiveTheme] = useState<ThemePreset>(THEME_PRESETS[0]);
@@ -265,7 +276,96 @@ export default function App() {
       }
     }
     carregarTemaNuvemInicial();
+
+    // Sincronizar URL inicial com a aba de Termos de Uso
+    if (window.location.pathname === '/termos' || window.location.hash === '#termos') {
+      setActiveTab('termos');
+    }
+    const handlePopState = () => {
+      if (window.location.pathname === '/termos' || window.location.hash === '#termos') {
+        setActiveTab('termos');
+      } else if (window.location.pathname === '/' || window.location.pathname === '') {
+        setActiveTab('geral');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // Gestão de Upload de Fotos das Patologias
+  const handleUploadFotoPatologia = (id: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPatologiaFeedbackMsg({
+        text: 'A imagem deve ter no máximo 5MB.',
+        type: 'error'
+      });
+      setTimeout(() => setPatologiaFeedbackMsg(null), 5000);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (uploadEvt) => {
+      const base64 = uploadEvt.target?.result as string;
+      if (base64) {
+        setPatologiaFotos(prev => {
+          const updated = { ...prev, [id]: base64 };
+          salvarFotosPatologiasLocal(updated);
+          return updated;
+        });
+        setPatologiaFeedbackMsg({
+          text: `✓ Foto da patologia #${id} atualizada com sucesso!`,
+          type: 'success'
+        });
+        setTimeout(() => setPatologiaFeedbackMsg(null), 4000);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSalvarUrlPatologia = (id: number) => {
+    const url = urlInputPatologias[id]?.trim();
+    if (!url) return;
+
+    setPatologiaFotos(prev => {
+      const updated = { ...prev, [id]: url };
+      salvarFotosPatologiasLocal(updated);
+      return updated;
+    });
+
+    setUrlInputPatologias(prev => ({ ...prev, [id]: '' }));
+    setPatologiaFeedbackMsg({
+      text: `✓ Link da foto #${id} aplicado com sucesso!`,
+      type: 'success'
+    });
+    setTimeout(() => setPatologiaFeedbackMsg(null), 4000);
+  };
+
+  const handleRestaurarFotoPatologia = (id: number) => {
+    const defaultUrl = DEFAULT_PATOLOGIA_FOTOS[id];
+    setPatologiaFotos(prev => {
+      const updated = { ...prev, [id]: defaultUrl };
+      salvarFotosPatologiasLocal(updated);
+      return updated;
+    });
+    setPatologiaFeedbackMsg({
+      text: `✓ Foto da patologia #${id} restaurada para a imagem padrão.`,
+      type: 'success'
+    });
+    setTimeout(() => setPatologiaFeedbackMsg(null), 4000);
+  };
+
+  const handleCarregarTodasFotosPadrao = () => {
+    setPatologiaFotos(DEFAULT_PATOLOGIA_FOTOS);
+    salvarFotosPatologiasLocal(DEFAULT_PATOLOGIA_FOTOS);
+    setPatologiaFeedbackMsg({
+      text: `✓ Todas as 15 fotos das patologias foram atualizadas para o acervo em alta resolução!`,
+      type: 'success'
+    });
+    setTimeout(() => setPatologiaFeedbackMsg(null), 5000);
+  };
 
   const handleAplicarPreviaTema = (preset: ThemePreset) => {
     setActiveTheme(preset);
@@ -1143,7 +1243,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
 
   return (
     <div 
-      className="min-h-screen font-sans antialiased selection:bg-orange-500/20 selection:text-orange-950 transition-colors duration-300"
+      className="min-h-screen font-sans antialiased selection:bg-orange-500/20 selection:text-orange-950 transition-colors duration-300 pb-24 sm:pb-16"
       style={{ 
         backgroundColor: activeTheme.bgColor, 
         color: activeTheme.textColor, 
@@ -1318,97 +1418,110 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         </div>
       </header>
 
-      {/* Hero Moderno e Iluminado com Paleta Dinâmica */}
-      <section 
-        className="py-12 sm:py-16 px-4 sm:px-6 relative overflow-hidden border-b transition-all duration-300"
-        style={{ 
-          background: activeBgTone?.isDark
-            ? `linear-gradient(to bottom, rgba(30, 41, 59, 0.8), ${activeTheme.bgColor}, rgba(15, 23, 42, 0.95))`
-            : `linear-gradient(to bottom, #ffffff, ${activeTheme.bgColor}, ${activeTheme.primaryLight}40)`,
-          borderColor: activeTheme.borderColor 
-        }}
-      >
-        <div className="max-w-5xl mx-auto space-y-5">
-          <div 
-            className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold border transition-all"
-            style={{ 
-              backgroundColor: activeTheme.primaryLight, 
-              color: activeTheme.primaryDark,
-              borderColor: activeTheme.primaryColor + '40'
-            }}
-          >
-            <Sparkles className="w-3.5 h-3.5" style={{ color: activeTheme.primaryColor }} />
-            Guia Completo para Você Mesmo Pintar ou Contratar com Segurança
-          </div>
-
-          <h1 
-            className="text-3xl sm:text-5xl font-black tracking-tight leading-tight transition-colors"
-            style={{ 
-              fontFamily: activeTheme.fontHeading,
-              color: activeTheme.textColor 
-            }}
-          >
-            Pintura Fácil, Descomplicada e Sem Erro
-          </h1>
-
-          <div 
-            className="border-l-4 pl-4 py-1 transition-colors"
-            style={{ borderColor: activeTheme.primaryColor }}
-          >
-            <p 
-              className="text-sm sm:text-base max-w-3xl leading-relaxed font-normal"
-              style={{ color: activeTheme.textMuted }}
-            >
-              "Pintar a própria casa não é um bicho de sete cabeças: e pode ser até uma terapia, revitalizante e econômica quando você sabe o caminho das pedras. Deixe que eu te guio passo a passo."
-            </p>
-          </div>
-
-          <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-800">
+      {/* Hero Moderno e Iluminado com Paleta Dinâmica (Ocultado na página dedicada de Termos de Uso) */}
+      {activeTab !== 'termos' && (
+        <section 
+          className="py-12 sm:py-16 px-4 sm:px-6 relative overflow-hidden border-b transition-all duration-300"
+          style={{ 
+            background: activeBgTone?.isDark
+              ? `linear-gradient(to bottom, rgba(30, 41, 59, 0.8), ${activeTheme.bgColor}, rgba(15, 23, 42, 0.95))`
+              : `linear-gradient(to bottom, #ffffff, ${activeTheme.bgColor}, ${activeTheme.primaryLight}40)`,
+            borderColor: activeTheme.borderColor 
+          }}
+        >
+          <div className="max-w-5xl mx-auto space-y-5">
             <div 
-              className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
-              style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
+              className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold border transition-all"
+              style={{ 
+                backgroundColor: activeTheme.primaryLight, 
+                color: activeTheme.primaryDark,
+                borderColor: activeTheme.primaryColor + '40'
+              }}
             >
-              <span 
-                className="block text-2xl sm:text-3xl font-black"
-                style={{ color: activeTheme.primaryColor }}
+              <Sparkles className="w-3.5 h-3.5" style={{ color: activeTheme.primaryColor }} />
+              Guia Completo para Você Mesmo Pintar ou Contratar com Segurança
+            </div>
+
+            <h1 
+              className="text-3xl sm:text-5xl font-black tracking-tight leading-tight transition-colors"
+              style={{ 
+                fontFamily: activeTheme.fontHeading,
+                color: activeTheme.textColor 
+              }}
+            >
+              Pintura Fácil, Descomplicada e Sem Erro
+            </h1>
+
+            <div 
+              className="border-l-4 pl-4 py-1 transition-colors"
+              style={{ borderColor: activeTheme.primaryColor }}
+            >
+              <p 
+                className="text-sm sm:text-base max-w-3xl leading-relaxed font-normal"
+                style={{ color: activeTheme.textMuted }}
               >
-                +30
-              </span>
-              <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
-                Anos de experiência técnica
-              </span>
+                "Pintar a própria casa não é um bicho de sete cabeças: e pode ser até uma terapia, revitalizante e econômica quando você sabe o caminho das pedras. Deixe que eu te guio passo a passo."
+              </p>
             </div>
-            <div 
-              className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
-              style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
-            >
-              <span 
-                className="block text-2xl sm:text-3xl font-black"
-                style={{ color: activeTheme.secondaryColor }}
+
+            <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-800">
+              <div 
+                className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
+                style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
               >
-                15
-              </span>
-              <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
-                Patologias explicadas & resolvidas
-              </span>
-            </div>
-            <div 
-              className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
-              style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
-            >
-              <span className="block text-2xl sm:text-3xl font-black text-emerald-600">
-                Zero
-              </span>
-              <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
-                Desperdício de tinta e dinheiro
-              </span>
+                <span 
+                  className="block text-2xl sm:text-3xl font-black"
+                  style={{ color: activeTheme.primaryColor }}
+                >
+                  +30
+                </span>
+                <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
+                  Anos de experiência técnica
+                </span>
+              </div>
+              <div 
+                className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
+                style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
+              >
+                <span 
+                  className="block text-2xl sm:text-3xl font-black"
+                  style={{ color: activeTheme.secondaryColor }}
+                >
+                  15
+                </span>
+                <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
+                  Patologias explicadas & resolvidas
+                </span>
+              </div>
+              <div 
+                className="p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all"
+                style={{ backgroundColor: activeTheme.bgCard, borderColor: activeTheme.borderColor }}
+              >
+                <span className="block text-2xl sm:text-3xl font-black text-emerald-600">
+                  Zero
+                </span>
+                <span className="text-xs font-medium" style={{ color: activeTheme.textMuted }}>
+                  Desperdício de tinta e dinheiro
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Conteúdo Principal */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10 space-y-16">
+
+        {/* PÁGINA DEDICADA: TERMOS DE USO E ISENÇÃO DE RESPONSABILIDADE */}
+        {activeTab === 'termos' && (
+          <TermosDeUso 
+            onVoltar={() => {
+              setActiveTab('geral');
+              window.history.pushState({}, '', '/');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
 
         {/* Resumo ou Abas */}
         {activeTab === 'geral' && (
@@ -2166,16 +2279,25 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                       "{item.resumo}"
                     </p>
 
-                    {/* Placeholder da Foto da Patologia */}
-                    <div className="bg-stone-200/70 border border-dashed border-stone-300 rounded-lg p-3 text-center my-2">
+                    {/* Foto Real da Patologia (Customizável pelo Painel Admin) */}
+                    <div className="relative rounded-xl overflow-hidden my-2 border border-stone-300 shadow-sm bg-stone-900 aspect-16/10 group">
                       <img 
-                        src={item.img} 
+                        src={patologiaFotos[item.id] || DEFAULT_PATOLOGIA_FOTOS[item.id] || item.img} 
                         alt={item.titulo} 
-                        className="w-full h-36 object-cover rounded bg-stone-300/80 text-[11px] text-stone-500 italic flex items-center justify-center"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          const fallback = DEFAULT_PATOLOGIA_FOTOS[item.id] || 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=800&q=80';
+                          if (target.src !== fallback) {
+                            target.src = fallback;
+                          }
+                        }}
                       />
-                      <span className="text-[10px] text-stone-500 mt-1 block font-mono">
-                        [Foto real: {item.img}]
-                      </span>
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950/90 via-stone-950/50 to-transparent p-2 text-left">
+                        <span className="text-[10px] text-amber-300 font-semibold flex items-center gap-1">
+                          <Eye className="w-3 h-3 text-amber-400" /> Caso Real: {item.titulo}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="space-y-3 pt-2 text-xs sm:text-sm text-stone-700">
@@ -2559,196 +2681,253 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
       </main>
 
       {/* SEÇÃO DO IDEALIZADOR DESTE PROJETO: VLADEMIR CARER */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 mt-16 mb-4">
-        <div className="bg-gradient-to-br from-stone-900 via-stone-900 to-stone-950 rounded-3xl p-6 sm:p-10 border border-stone-800 shadow-2xl relative overflow-hidden">
-          
-          {/* Brilho decorativo sutil de fundo */}
-          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="relative z-10 flex flex-col lg:flex-row items-center lg:items-start gap-8 lg:gap-12">
+      {activeTab !== 'termos' && (
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 mt-16 mb-4">
+          <div className="bg-gradient-to-br from-stone-900 via-stone-900 to-stone-950 rounded-3xl p-6 sm:p-10 border border-stone-800 shadow-2xl relative overflow-hidden">
             
-            {/* Foto do Idealizador com Moldura Nobre */}
-            <div className="shrink-0 flex flex-col items-center text-center">
-              <div className="relative group">
-                {/* Aura dourada/âmbar */}
-                <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-amber-500 to-amber-700 opacity-30 group-hover:opacity-60 blur-md transition duration-500" />
-                
-                <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-3xl overflow-hidden border-2 border-amber-500/40 bg-stone-950 shadow-2xl">
-                  <img
-                    src={idealizadorFoto}
-                    alt="Vlademir Carer - Idealizador do Pinta Aqui"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      // Fallback para caminho estático público caso necessário
-                      const target = e.currentTarget;
-                      if (!target.src.includes('vlademir-carer.jpg')) {
-                        target.src = '/vlademir-carer.jpg';
-                      }
-                    }}
-                    className="w-full h-full object-cover object-top transition duration-500 group-hover:scale-105"
-                  />
+            {/* Brilho decorativo sutil de fundo */}
+            <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="relative z-10 flex flex-col lg:flex-row items-center lg:items-start gap-8 lg:gap-12">
+              
+              {/* Foto do Idealizador com Moldura Nobre */}
+              <div className="shrink-0 flex flex-col items-center text-center">
+                <div className="relative group">
+                  {/* Aura dourada/âmbar */}
+                  <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-amber-500 to-amber-700 opacity-30 group-hover:opacity-60 blur-md transition duration-500" />
+                  
+                  <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-3xl overflow-hidden border-2 border-amber-500/40 bg-stone-950 shadow-2xl">
+                    <img
+                      src={idealizadorFoto}
+                      alt="Vlademir Carer - Idealizador do Pinta Aqui"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        // Fallback para caminho estático público caso necessário
+                        const target = e.currentTarget;
+                        if (!target.src.includes('vlademir-carer.jpg')) {
+                          target.src = '/vlademir-carer.jpg';
+                        }
+                      }}
+                      className="w-full h-full object-cover object-top transition duration-500 group-hover:scale-105"
+                    />
+                  </div>
+
+                  <div className="absolute -bottom-3 inset-x-0 flex justify-center">
+                    <span className="px-3 py-1 rounded-full bg-amber-500 text-stone-950 text-[11px] font-extrabold uppercase tracking-wider shadow-lg shadow-amber-500/30 flex items-center gap-1">
+                      <Award className="w-3.5 h-3.5" /> Idealizador
+                    </span>
+                  </div>
                 </div>
 
-                <div className="absolute -bottom-3 inset-x-0 flex justify-center">
-                  <span className="px-3 py-1 rounded-full bg-amber-500 text-stone-950 text-[11px] font-extrabold uppercase tracking-wider shadow-lg shadow-amber-500/30 flex items-center gap-1">
-                    <Award className="w-3.5 h-3.5" /> Idealizador
+                <div className="mt-5 space-y-0.5">
+                  <h4 className="text-xl font-extrabold text-white">Vlademir Carer</h4>
+                  <p className="text-xs text-amber-400 font-medium">Fundador & Especialista Técnico</p>
+                </div>
+              </div>
+
+              {/* Informações e Trajetória do Idealizador */}
+              <div className="flex-1 space-y-5 text-center lg:text-left">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-bold uppercase tracking-wider mb-2">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Idealizador deste Projeto
                   </span>
+                  <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                    Quase 30 Anos Dedicados à Arte, Ciência e Prática da Boa Pintura
+                  </h3>
                 </div>
-              </div>
 
-              <div className="mt-5 space-y-0.5">
-                <h4 className="text-xl font-extrabold text-white">Vlademir Carer</h4>
-                <p className="text-xs text-amber-400 font-medium">Fundador & Especialista Técnico</p>
-              </div>
-            </div>
+                <div className="space-y-3 text-slate-300 text-sm leading-relaxed">
+                  <p>
+                    Com quase três décadas de vivência diária no segmento de tintas imobiliárias, <strong>Vlademir Carer</strong> acumulou um conhecimento raro e completo: passou pelo chão de fábrica das indústrias químicas, pelo atendimento técnico atrás dos balcões de lojas e, acima de tudo, esteve ao lado dos profissionais nas obras, resolvendo problemas reais de infiltração, mofo, preparação e acabamento.
+                  </p>
+                  <p>
+                    O <strong>Pinta Aqui</strong> nasceu dessa experiência como um projeto de vida: democratizar o conhecimento técnico da pintura para que os proprietários protejam seu lar sem desperdício de dinheiro, e ao mesmo tempo criar uma vitrine de respeito e valorização para os verdadeiros pintores profissionais do Brasil.
+                  </p>
+                </div>
 
-            {/* Informações e Trajetória do Idealizador */}
-            <div className="flex-1 space-y-5 text-center lg:text-left">
-              <div>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-bold uppercase tracking-wider mb-2">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Idealizador deste Projeto
-                </span>
-                <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                  Quase 30 Anos Dedicados à Arte, Ciência e Prática da Boa Pintura
-                </h3>
-              </div>
-
-              <div className="space-y-3 text-slate-300 text-sm leading-relaxed">
-                <p>
-                  Com quase três décadas de vivência diária no segmento de tintas imobiliárias, <strong>Vlademir Carer</strong> acumulou um conhecimento raro e completo: passou pelo chão de fábrica das indústrias químicas, pelo atendimento técnico atrás dos balcões de lojas e, acima de tudo, esteve ao lado dos profissionais nas obras, resolvendo problemas reais de infiltração, mofo, preparação e acabamento.
-                </p>
-                <p>
-                  O <strong>Pinta Aqui</strong> nasceu dessa experiência como um projeto de vida: democratizar o conhecimento técnico da pintura para que os proprietários protejam seu lar sem desperdício de dinheiro, e ao mesmo tempo criar uma vitrine de respeito e valorização para os verdadeiros pintores profissionais do Brasil.
-                </p>
-              </div>
-
-              {/* Destaques de Autoridade */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
-                  <div className="w-7 h-7 rounded-lg bg-orange-500/15 text-orange-400 flex items-center justify-center shrink-0 font-bold">
-                    ★
+                {/* Destaques de Autoridade */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
+                    <div className="w-7 h-7 rounded-lg bg-orange-500/15 text-orange-400 flex items-center justify-center shrink-0 font-bold">
+                      ★
+                    </div>
+                    <span>Quase 30 anos no mercado de tintas imobiliárias</span>
                   </div>
-                  <span>Quase 30 anos no mercado de tintas imobiliárias</span>
-                </div>
 
-                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
-                  <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0 font-bold">
-                    🏭
+                  <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
+                    <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0 font-bold">
+                      🏭
+                    </div>
+                    <span>Vivência prática em fábricas, lojas técnicas e obras</span>
                   </div>
-                  <span>Vivência prática em fábricas, lojas técnicas e obras</span>
-                </div>
 
-                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0 font-bold">
-                    🤝
+                  <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0 font-bold">
+                      🤝
+                    </div>
+                    <span>Defensor e mentor da valorização do pintor</span>
                   </div>
-                  <span>Defensor e mentor da valorização do pintor</span>
-                </div>
 
-                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
-                  <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0 font-bold">
-                    🔬
+                  <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200">
+                    <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0 font-bold">
+                      🔬
+                    </div>
+                    <span>Especialista em diagnóstico de patologias de parede</span>
                   </div>
-                  <span>Especialista em diagnóstico de patologias de parede</span>
                 </div>
-              </div>
 
-              {/* Frase / Citação de Mestre */}
-              <div className="p-4 rounded-2xl bg-slate-950/60 border-l-4 border-orange-500 text-slate-200 text-xs sm:text-sm italic">
-                "A pintura não é apenas estética; é proteção estrutural, conforto térmico e a realização de um sonho. Quem entende de parede economiza tempo, dinheiro e vive muito melhor."
-                <span className="block mt-1.5 font-bold not-italic text-orange-400 text-xs">— Vlademir Carer</span>
-              </div>
+                {/* Frase / Citação de Mestre */}
+                <div className="p-4 rounded-2xl bg-slate-950/60 border-l-4 border-orange-500 text-slate-200 text-xs sm:text-sm italic">
+                  "A pintura não é apenas estética; é proteção estrutural, conforto térmico e a realização de um sonho. Quem entende de parede economiza tempo, dinheiro e vive muito melhor."
+                  <span className="block mt-1.5 font-bold not-italic text-orange-400 text-xs">— Vlademir Carer</span>
+                </div>
 
-              {/* Canais de Contato com o Idealizador */}
-              <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-3.5 text-xs">
-                <a 
-                  href="mailto:vcarer@gmail.com"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-orange-500/50 transition font-medium"
-                >
-                  <Mail className="w-4 h-4 text-orange-400" />
-                  <span>vcarer@gmail.com</span>
-                </a>
+                {/* Canais de Contato com o Idealizador */}
+                <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-3.5 text-xs">
+                  <a 
+                    href="mailto:vcarer@gmail.com"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-orange-500/50 transition font-medium"
+                  >
+                    <Mail className="w-4 h-4 text-orange-400" />
+                    <span>vcarer@gmail.com</span>
+                  </a>
 
-                <a 
-                  href="https://wa.me/5511999999999?text=Ol%C3%A1%20Vlademir!%20Acesse%20o%20portal%20Pinta%20Aqui%20e%20gostaria%20de%20conversar."
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-sm"
-                >
-                  <Phone className="w-4 h-4" />
-                  <span>Contato Direto no WhatsApp</span>
-                </a>
+                  <a 
+                    href="https://wa.me/5511999999999?text=Ol%C3%A1%20Vlademir!%20Acesse%20o%20portal%20Pinta%20Aqui%20e%20gostaria%20de%20conversar."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-sm"
+                  >
+                    <Phone className="w-4 h-4" />
+                    <span>Contato Direto no WhatsApp</span>
+                  </a>
+                </div>
+
               </div>
 
             </div>
 
           </div>
-
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Footer Profissional e Limpo */}
       <footer className="bg-slate-900 text-slate-400 py-12 px-4 sm:px-6 border-t border-slate-800 text-xs sm:text-sm">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="space-y-3 text-center md:text-left">
-            <div>
-              <LogoPintaAqui 
-                onClick={() => setActiveTab('geral')}
-                withPill={true}
-                size="sm"
-              />
+        <div className="max-w-6xl mx-auto space-y-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+            <div className="space-y-3 text-center md:text-left">
+              <div>
+                <LogoPintaAqui 
+                  onClick={() => {
+                    setActiveTab('geral');
+                    window.history.pushState({}, '', '/');
+                  }}
+                  withPill={true}
+                  size="sm"
+                />
+              </div>
+              <p className="text-slate-400 text-xs max-w-md leading-relaxed">
+                A autoridade de quase 30 anos no ramo de tintas imobiliárias compartilhada gratuitamente com quem quer valorizar o imóvel e valorizar o trabalho do pintor profissional.
+              </p>
             </div>
-            <p className="text-slate-400 text-xs max-w-md leading-relaxed">
-              A autoridade de quase 30 anos no ramo de tintas imobiliárias compartilhada gratuitamente com quem quer valorizar o imóvel e valorizar o trabalho do pintor profissional.
-            </p>
-          </div>
 
-          {/* Links Rápidos do Portal */}
-          <div className="flex flex-wrap justify-center gap-5 text-xs">
-            <button onClick={() => setActiveTab('desvendando')} className="text-slate-400 hover:text-white transition cursor-pointer">
-              Guia de Tintas
-            </button>
-            <button onClick={() => setActiveTab('tipos')} className="text-slate-400 hover:text-white transition cursor-pointer">
-              Tipos de Superfície
-            </button>
-            <button onClick={() => setActiveTab('texturas')} className="text-slate-400 hover:text-white transition cursor-pointer">
-              Efeitos Decorativos
-            </button>
-            <button onClick={() => setActiveTab('ferramentas')} className="text-slate-400 hover:text-white transition cursor-pointer">
-              Ferramentas
-            </button>
-            <button onClick={() => setActiveTab('patologias')} className="text-slate-400 hover:text-white transition cursor-pointer">
-              Doutor Parede
-            </button>
-            <button onClick={() => setActiveTab('profissional')} className="text-orange-400 hover:text-orange-300 font-bold transition cursor-pointer">
-              Pintores Profissionais
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center gap-4 text-center md:text-right">
-            <div>
-              <p className="text-slate-300 font-semibold text-xs">www.pintaaqui.com.br</p>
-              <p className="text-slate-500 text-[11px] mt-0.5">© 2026 • Feito com paixão pela boa pintura.</p>
-              <button
-                type="button"
-                onClick={() => setAvisoModalOpen(true)}
-                className="text-amber-400/80 hover:text-amber-300 text-[11px] underline mt-1 transition cursor-pointer flex items-center justify-center md:justify-end gap-1 w-full"
-                title="Ler Aviso de Isenção de Responsabilidade"
+            {/* Links Rápidos do Portal */}
+            <div className="flex flex-wrap justify-center gap-5 text-xs">
+              <button onClick={() => { setActiveTab('desvendando'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-slate-400 hover:text-white transition cursor-pointer">
+                Guia de Tintas
+              </button>
+              <button onClick={() => { setActiveTab('tipos'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-slate-400 hover:text-white transition cursor-pointer">
+                Tipos de Superfície
+              </button>
+              <button onClick={() => { setActiveTab('texturas'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-slate-400 hover:text-white transition cursor-pointer">
+                Efeitos Decorativos
+              </button>
+              <button onClick={() => { setActiveTab('ferramentas'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-slate-400 hover:text-white transition cursor-pointer">
+                Ferramentas
+              </button>
+              <button onClick={() => { setActiveTab('patologias'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-slate-400 hover:text-white transition cursor-pointer">
+                Doutor Parede
+              </button>
+              <button onClick={() => { setActiveTab('profissional'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-orange-400 hover:text-orange-300 font-bold transition cursor-pointer">
+                Pintores Profissionais
+              </button>
+              <button 
+                onClick={() => {
+                  setActiveTab('termos');
+                  window.history.pushState({}, '', '/termos');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }} 
+                className={`transition cursor-pointer font-bold ${
+                  activeTab === 'termos'
+                    ? 'text-amber-400 underline'
+                    : 'text-amber-400/90 hover:text-amber-300'
+                }`}
               >
-                <span>⚠️ Isenção de Responsabilidade</span>
+                Termos de Uso
               </button>
             </div>
-            <button
-              onClick={() => setAdminModalOpen(true)}
-              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-orange-400 border border-slate-700 transition cursor-pointer"
-              title="Acesso Administrativo"
-            >
-              <Lock className="w-4 h-4" />
-            </button>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4 text-center md:text-right">
+              <div>
+                <p className="text-slate-300 font-semibold text-xs">www.pintaaqui.com.br</p>
+                <p className="text-slate-500 text-[11px] mt-0.5">© 2026 • Feito com paixão pela boa pintura.</p>
+                <button
+                  type="button"
+                  onClick={() => setAvisoModalOpen(true)}
+                  className="text-amber-400/80 hover:text-amber-300 text-[11px] underline mt-1 transition cursor-pointer flex items-center justify-center md:justify-end gap-1 w-full"
+                  title="Ler Aviso de Isenção de Responsabilidade"
+                >
+                  <span>⚠️ Isenção de Responsabilidade</span>
+                </button>
+              </div>
+              <button
+                onClick={() => setAdminModalOpen(true)}
+                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-orange-400 border border-slate-700 transition cursor-pointer"
+                title="Acesso Administrativo"
+              >
+                <Lock className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Texto Institucional para o Rodapé (Footer) */}
+          <div className="pt-6 border-t border-slate-800 text-center">
+            <p className="text-slate-400 text-xs sm:text-xs max-w-4xl mx-auto leading-relaxed font-normal">
+              O Pinta Aqui atua exclusivamente como um diretório informativo para divulgação de conteúdo e conexão entre clientes e pintores independentes. Não nos responsabilizamos por acordos comerciais, danos, qualidade de serviços ou transações financeiras realizadas entre as partes.
+            </p>
           </div>
         </div>
       </footer>
+
+      {/* Texto Institucional Discreto Fixo na Parte Inferior de Todas as Páginas */}
+      <aside 
+        role="complementary"
+        aria-label="Aviso Institucional Fixo"
+        className="fixed bottom-0 inset-x-0 z-40 bg-stone-950/95 backdrop-blur-md border-t border-stone-800 px-4 py-2.5 shadow-2xl text-[11px] text-stone-400"
+      >
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2.5 text-center sm:text-left">
+          <p className="leading-snug text-stone-300 max-w-4xl text-[11px]">
+            <span className="text-amber-400 font-bold mr-1.5 inline-flex items-center gap-1">
+              <Shield className="w-3.5 h-3.5 text-amber-400 inline" /> Aviso Institucional:
+            </span>
+            O Pinta Aqui atua exclusivamente como um diretório informativo para divulgação de conteúdo e conexão entre clientes e pintores independentes. Não nos responsabilizamos por acordos comerciais, danos, qualidade de serviços ou transações financeiras realizadas entre as partes.
+          </p>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('termos');
+                window.history.pushState({}, '', '/termos');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="text-amber-400 hover:text-amber-300 font-bold underline transition cursor-pointer text-[11px]"
+            >
+              Termos de Uso
+            </button>
+          </div>
+        </div>
+      </aside>
 
       {/* MODAL DO PAINEL ADMINISTRATIVO (SUPABASE & CONFIGURAÇÕES) */}
       {adminModalOpen && (
@@ -2873,6 +3052,17 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   >
                     <Award className="w-3.5 h-3.5 text-amber-400" />
                     <span>Foto do Idealizador</span>
+                  </button>
+                  <button
+                    onClick={() => setAdminTab('patologias')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
+                      adminTab === 'patologias'
+                        ? 'bg-amber-500 text-stone-950 font-bold'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-800'
+                    }`}
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Fotos das Patologias (15)</span>
                   </button>
                   <button
                     onClick={() => setAdminTab('temas')}
@@ -3350,7 +3540,144 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   </div>
                 )}
 
-                {/* Aba: Personalização & Temas Visuais (Cores e Fontes em Nuvem) */}
+                {/* Aba: Fotos das Patologias da Pintura (Problemas Mais Comuns e Como Curar Cada Um) */}
+                {adminTab === 'patologias' && (
+                  <div className="space-y-6">
+                    {/* Alerta de Feedback de Alteração de Fotos */}
+                    {patologiaFeedbackMsg && (
+                      <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 border transition ${
+                        patologiaFeedbackMsg.type === 'success'
+                          ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                          : 'bg-red-950/80 border-red-500/50 text-red-200'
+                      }`}>
+                        {patologiaFeedbackMsg.type === 'success' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                        )}
+                        <span>{patologiaFeedbackMsg.text}</span>
+                      </div>
+                    )}
+
+                    {/* Banner Explicativo */}
+                    <div className="bg-stone-950 border border-stone-800 p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <ImageIcon className="w-5 h-5 text-amber-400" />
+                          <h4 className="text-sm sm:text-base font-extrabold text-white">
+                            Fotos das 15 Patologias da Pintura (Doutor Parede)
+                          </h4>
+                        </div>
+                        <p className="text-xs text-stone-400 leading-relaxed max-w-2xl">
+                          Envie fotos do seu computador ou cole links de imagens da internet para cada um dos 15 problemas do bloco "Patologias da Pintura: Problemas Mais Comuns e Como Curar Cada Um". As alterações entram no ar imediatamente.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleCarregarTodasFotosPadrao}
+                        className="py-2.5 px-4 rounded-xl bg-stone-850 hover:bg-stone-800 text-amber-400 border border-stone-750 font-bold text-xs flex items-center gap-2 transition cursor-pointer shrink-0"
+                        title="Restaurar todas as 15 fotos para a galeria padrão em alta resolução"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Restaurar Todas (Padrão)</span>
+                      </button>
+                    </div>
+
+                    {/* Grade das 15 Patologias */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {patologias.map((p) => {
+                        const fotoAtual = patologiaFotos[p.id] || DEFAULT_PATOLOGIA_FOTOS[p.id] || p.img;
+                        return (
+                          <div 
+                            key={p.id} 
+                            className="bg-stone-950 border border-stone-800 hover:border-stone-700 rounded-2xl p-4 space-y-3 transition flex flex-col justify-between"
+                          >
+                            <div className="space-y-2">
+                              {/* Título e Tipo */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
+                                    #{p.id} • {p.tipo}
+                                  </span>
+                                  <h5 className="font-bold text-white text-xs mt-1 leading-snug">
+                                    {p.titulo}
+                                  </h5>
+                                </div>
+                              </div>
+
+                              {/* Miniatura da Foto Atual */}
+                              <div className="relative rounded-xl overflow-hidden aspect-16/9 bg-stone-900 border border-stone-800 group">
+                                <img 
+                                  src={fotoAtual} 
+                                  alt={p.titulo} 
+                                  className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                  onError={(e) => {
+                                    const target = e.currentTarget;
+                                    const fallback = DEFAULT_PATOLOGIA_FOTOS[p.id] || 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=800&q=80';
+                                    if (target.src !== fallback) {
+                                      target.src = fallback;
+                                    }
+                                  }}
+                                />
+                                <div className="absolute top-2 right-2 bg-stone-950/80 px-2 py-0.5 rounded text-[10px] text-stone-300">
+                                  {fotoAtual.startsWith('data:') ? 'Foto enviada do PC' : 'Link Web'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Controles de Atualização */}
+                            <div className="space-y-2 pt-1 border-t border-stone-900">
+                              {/* Botão de Envio de Arquivo do Computador */}
+                              <label className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs">
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>Enviar Foto do Computador</span>
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  className="hidden" 
+                                  onChange={(e) => handleUploadFotoPatologia(p.id, e)} 
+                                />
+                              </label>
+
+                              {/* Input de URL Direta */}
+                              <div className="flex gap-1.5">
+                                <input 
+                                  type="url" 
+                                  placeholder="Ou cole a URL da imagem..." 
+                                  value={urlInputPatologias[p.id] || ''} 
+                                  onChange={(e) => setUrlInputPatologias(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  className="flex-1 bg-stone-900 border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono placeholder:text-stone-600 focus:border-amber-500 focus:outline-hidden"
+                                />
+                                <button 
+                                  type="button"
+                                  onClick={() => handleSalvarUrlPatologia(p.id)}
+                                  disabled={!urlInputPatologias[p.id]?.trim()}
+                                  className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 disabled:opacity-40 text-stone-200 text-xs font-semibold cursor-pointer transition border border-stone-700 shrink-0"
+                                >
+                                  Salvar
+                                </button>
+                              </div>
+
+                              {/* Botão Restaurar Individual */}
+                              <div className="flex items-center justify-between text-[11px] text-stone-400 pt-0.5">
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleRestaurarFotoPatologia(p.id)}
+                                  className="text-stone-400 hover:text-amber-400 underline inline-flex items-center gap-1 cursor-pointer transition"
+                                >
+                                  <RotateCcw className="w-2.5 h-2.5" /> Restaurar imagem padrão
+                                </button>
+                                <span className="text-[10px] text-stone-600">ID #{p.id}</span>
+                              </div>
+                            </div>
+
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 {adminTab === 'temas' && (
                   <div className="space-y-6">
                     {/* Alerta de Feedback de Gravação do Tema */}
