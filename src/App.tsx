@@ -201,6 +201,16 @@ export default function App() {
   const [loginPintorFeedback, setLoginPintorFeedback] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [loginPintorLoading, setLoginPintorLoading] = useState(false);
 
+  // Caixa de Alerta / Card de Isenção de Responsabilidade (Exibido ao entrar no site)
+  const [avisoModalOpen, setAvisoModalOpen] = useState(() => {
+    return sessionStorage.getItem('pintaaqui_aviso_dismissed') !== 'true';
+  });
+
+  const handleContinuarAviso = () => {
+    sessionStorage.setItem('pintaaqui_aviso_dismissed', 'true');
+    setAvisoModalOpen(false);
+  };
+
   // Load saved credentials from localStorage if user updated them, else defaults
   // e carregar Foto do Idealizador da Nuvem
   useEffect(() => {
@@ -2720,6 +2730,14 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
             <div>
               <p className="text-slate-300 font-semibold text-xs">www.pintaaqui.com.br</p>
               <p className="text-slate-500 text-[11px] mt-0.5">© 2026 • Feito com paixão pela boa pintura.</p>
+              <button
+                type="button"
+                onClick={() => setAvisoModalOpen(true)}
+                className="text-amber-400/80 hover:text-amber-300 text-[11px] underline mt-1 transition cursor-pointer flex items-center justify-center md:justify-end gap-1 w-full"
+                title="Ler Aviso de Isenção de Responsabilidade"
+              >
+                <span>⚠️ Isenção de Responsabilidade</span>
+              </button>
             </div>
             <button
               onClick={() => setAdminModalOpen(true)}
@@ -5126,6 +5144,86 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* CARD / CAIXA DE ALERTA: AVISO DE ISENÇÃO DE RESPONSABILIDADE (AO ENTRAR NO SITE) */}
+      {avisoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div 
+            className="bg-stone-900 border-2 border-amber-500/50 text-stone-100 rounded-3xl w-full max-w-xl shadow-2xl p-6 sm:p-8 space-y-6 relative overflow-hidden"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="aviso-responsabilidade-titulo"
+          >
+            {/* Brilho decorativo sutil de fundo */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Cabeçalho do Card */}
+            <div className="flex items-start justify-between gap-4 pb-4 border-b border-stone-800 relative z-10">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0 shadow-md shadow-amber-500/15 text-2xl">
+                  ⚠️
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
+                    Comunicado Importante • Termos de Uso
+                  </span>
+                  <h3 id="aviso-responsabilidade-titulo" className="text-lg sm:text-xl font-black text-white leading-tight">
+                    Aviso de Isenção de Responsabilidade
+                  </h3>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleContinuarAviso}
+                className="p-1.5 rounded-xl text-stone-400 hover:text-white hover:bg-stone-800 transition cursor-pointer shrink-0"
+                title="Fechar e continuar"
+                aria-label="Fechar aviso e continuar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Conteúdo do Alerta */}
+            <div className="space-y-4 relative z-10 text-xs sm:text-sm">
+              <div className="p-4 sm:p-5 rounded-2xl bg-stone-950 border border-stone-800/90 shadow-inner">
+                <p className="text-stone-200 leading-relaxed text-xs sm:text-sm font-normal">
+                  O <strong>Pinta Aqui</strong> é uma plataforma gratuita de aproximação entre clientes e profissionais da pintura. Toda a negociação, orçamento, definição de prazos, pagamentos e a execução dos serviços são de responsabilidade exclusiva e direta entre o cliente e o pintor contratado. O site não intermedeia pagamentos, não garante serviços e não possui vínculo trabalhista ou comercial com os profissionais cadastrados.
+                </p>
+              </div>
+
+              {/* Destaques em Pílulas Informativas */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-[11px]">
+                <div className="p-2.5 rounded-xl bg-stone-950/70 border border-stone-800/80 flex items-center gap-2 text-stone-300">
+                  <span className="text-amber-400 font-bold">🤝</span>
+                  <span>Aproximação 100% gratuita</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-stone-950/70 border border-stone-800/80 flex items-center gap-2 text-stone-300">
+                  <span className="text-amber-400 font-bold">💼</span>
+                  <span>Negociação direta</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-stone-950/70 border border-stone-800/80 flex items-center gap-2 text-stone-300">
+                  <span className="text-amber-400 font-bold">🛡️</span>
+                  <span>Sem intermediação financeira</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Botão Continuar */}
+            <div className="pt-2 relative z-10">
+              <button
+                type="button"
+                onClick={handleContinuarAviso}
+                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-stone-950 font-black text-sm tracking-wide shadow-xl shadow-amber-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Continuar</span>
+                <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            </div>
           </div>
         </div>
       )}
