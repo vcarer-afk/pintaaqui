@@ -89,7 +89,9 @@ import {
   alternarLiberacaoSupervisorNuvem,
   enviarEmailAtivacaoPintor,
   buscarEnderecoPorCep,
-  gerarCodigoAtivacao4Digitos
+  gerarCodigoAtivacao4Digitos,
+  salvarFotosPatologiasNuvem,
+  carregarFotosPatologiasNuvem
 } from './lib/supabase';
 import { 
   ThemePreset, 
@@ -127,10 +129,13 @@ export default function App() {
   const [adminTab, setAdminTab] = useState<'pintores' | 'idealizador' | 'patologias' | 'temas' | 'supabase' | 'schema' | 'geral'>('pintores');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Fotos das Patologias da Pintura (Gerenciáveis via Admin)
+  // Fotos das Patologias da Pintura (Gerenciáveis via Admin e Gravadas na Nuvem)
   const [patologiaFotos, setPatologiaFotos] = useState<Record<number, string>>(carregarFotosPatologiasSalvas);
-  const [patologiaFeedbackMsg, setPatologiaFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [patologiasModificadas, setPatologiasModificadas] = useState(false);
+  const [salvandoPatologiasNuvem, setSalvandoPatologiasNuvem] = useState(false);
+  const [patologiaFeedbackMsg, setPatologiaFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [urlInputPatologias, setUrlInputPatologias] = useState<Record<number, string>>({});
+  const [patologiaEditadaIds, setPatologiaEditadaIds] = useState<number[]>([]);
 
   // Presets de Cores e Fontes (Gravados na Nuvem no Supabase)
   const [activeTheme, setActiveTheme] = useState<ThemePreset>(THEME_PRESETS[0]);
@@ -277,6 +282,19 @@ export default function App() {
     }
     carregarTemaNuvemInicial();
 
+    // Carregar fotos oficiais das patologias gravadas na nuvem (sempre carregar da nuvem)
+    async function carregarFotosPatologiasInicial() {
+      try {
+        const fotosNuvem = await carregarFotosPatologiasNuvem();
+        if (fotosNuvem && Object.keys(fotosNuvem).length > 0) {
+          setPatologiaFotos(prev => ({ ...DEFAULT_PATOLOGIA_FOTOS, ...prev, ...fotosNuvem }));
+        }
+      } catch (err) {
+        console.error('Erro ao carregar fotos de patologias da nuvem:', err);
+      }
+    }
+    carregarFotosPatologiasInicial();
+
     // Sincronizar URL inicial com a aba de Termos de Uso
     if (window.location.pathname === '/termos' || window.location.hash === '#termos') {
       setActiveTab('termos');
@@ -315,11 +333,13 @@ export default function App() {
           salvarFotosPatologiasLocal(updated);
           return updated;
         });
+        setPatologiasModificadas(true);
+        setPatologiaEditadaIds(prev => Array.from(new Set([...prev, id])));
         setPatologiaFeedbackMsg({
-          text: `✓ Foto da patologia #${id} atualizada com sucesso!`,
-          type: 'success'
+          text: `Foto do problema #${id} carregada! O botão "Gravar Fotos na Nuvem" foi ATIVADO. Clique em Gravar para salvar no Supabase e atualizar em definitivo.`,
+          type: 'info'
         });
-        setTimeout(() => setPatologiaFeedbackMsg(null), 4000);
+        setTimeout(() => setPatologiaFeedbackMsg(null), 6000);
       }
     };
     reader.readAsDataURL(file);
@@ -336,11 +356,13 @@ export default function App() {
     });
 
     setUrlInputPatologias(prev => ({ ...prev, [id]: '' }));
+    setPatologiasModificadas(true);
+    setPatologiaEditadaIds(prev => Array.from(new Set([...prev, id])));
     setPatologiaFeedbackMsg({
-      text: `✓ Link da foto #${id} aplicado com sucesso!`,
-      type: 'success'
+      text: `Link da foto #${id} aplicado! O botão "Gravar Fotos na Nuvem" foi ATIVADO. Clique em Gravar para salvar no Supabase.`,
+      type: 'info'
     });
-    setTimeout(() => setPatologiaFeedbackMsg(null), 4000);
+    setTimeout(() => setPatologiaFeedbackMsg(null), 6000);
   };
 
   const handleRestaurarFotoPatologia = (id: number) => {
@@ -350,21 +372,55 @@ export default function App() {
       salvarFotosPatologiasLocal(updated);
       return updated;
     });
+    setPatologiasModificadas(true);
+    setPatologiaEditadaIds(prev => Array.from(new Set([...prev, id])));
     setPatologiaFeedbackMsg({
-      text: `✓ Foto da patologia #${id} restaurada para a imagem padrão.`,
-      type: 'success'
+      text: `Foto da patologia #${id} restaurada no preview. Clique em "Gravar Fotos na Nuvem" para confirmar.`,
+      type: 'info'
     });
-    setTimeout(() => setPatologiaFeedbackMsg(null), 4000);
+    setTimeout(() => setPatologiaFeedbackMsg(null), 5000);
   };
 
   const handleCarregarTodasFotosPadrao = () => {
     setPatologiaFotos(DEFAULT_PATOLOGIA_FOTOS);
     salvarFotosPatologiasLocal(DEFAULT_PATOLOGIA_FOTOS);
+    setPatologiasModificadas(true);
+    setPatologiaEditadaIds(Object.keys(DEFAULT_PATOLOGIA_FOTOS).map(Number));
     setPatologiaFeedbackMsg({
-      text: `✓ Todas as 15 fotos das patologias foram atualizadas para o acervo em alta resolução!`,
-      type: 'success'
+      text: `Todas as 15 fotos das patologias foram restauradas para o acervo padrão! Clique em "Gravar Fotos na Nuvem" para confirmar no Supabase.`,
+      type: 'info'
     });
-    setTimeout(() => setPatologiaFeedbackMsg(null), 5000);
+    setTimeout(() => setPatologiaFeedbackMsg(null), 6000);
+  };
+
+  // Gravar fotos definitivamente na Nuvem (Supabase)
+  const handleGravarFotosPatologiasNuvem = async () => {
+    setSalvandoPatologiasNuvem(true);
+    setPatologiaFeedbackMsg(null);
+    try {
+      const res = await salvarFotosPatologiasNuvem(patologiaFotos);
+      setSalvandoPatologiasNuvem(false);
+      if (res.success) {
+        setPatologiasModificadas(false);
+        setPatologiaEditadaIds([]);
+        setPatologiaFeedbackMsg({
+          text: `✓ Sucesso! As fotos das patologias foram gravadas na Nuvem do Supabase (${res.latencyMs || 90}ms). As novas fotos já estão ativas no site e serão sempre carregadas da nuvem para todos os visitantes!`,
+          type: 'success'
+        });
+      } else {
+        setPatologiaFeedbackMsg({
+          text: `Erro ao gravar na nuvem do Supabase: ${res.error || 'Falha de comunicação'}.`,
+          type: 'error'
+        });
+      }
+    } catch (err: any) {
+      setSalvandoPatologiasNuvem(false);
+      setPatologiaFeedbackMsg({
+        text: `Exceção ao gravar no Supabase: ${err?.message || 'Falha de rede.'}`,
+        type: 'error'
+      });
+    }
+    setTimeout(() => setPatologiaFeedbackMsg(null), 8000);
   };
 
   const handleAplicarPreviaTema = (preset: ThemePreset) => {
@@ -3545,69 +3601,125 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   <div className="space-y-6">
                     {/* Alerta de Feedback de Alteração de Fotos */}
                     {patologiaFeedbackMsg && (
-                      <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 border transition ${
+                      <div className={`p-4 rounded-2xl text-xs flex items-center gap-3 border shadow-md transition ${
                         patologiaFeedbackMsg.type === 'success'
-                          ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
-                          : 'bg-red-950/80 border-red-500/50 text-red-200'
+                          ? 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200'
+                          : patologiaFeedbackMsg.type === 'info'
+                            ? 'bg-amber-950/90 border-amber-500/60 text-amber-200'
+                            : 'bg-red-950/90 border-red-500/60 text-red-200'
                       }`}>
                         {patologiaFeedbackMsg.type === 'success' ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                        ) : patologiaFeedbackMsg.type === 'info' ? (
+                          <Cloud className="w-5 h-5 text-amber-400 shrink-0 animate-pulse" />
                         ) : (
-                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                          <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
                         )}
-                        <span>{patologiaFeedbackMsg.text}</span>
+                        <span className="font-medium leading-relaxed">{patologiaFeedbackMsg.text}</span>
                       </div>
                     )}
 
-                    {/* Banner Explicativo */}
-                    <div className="bg-stone-950 border border-stone-800 p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <ImageIcon className="w-5 h-5 text-amber-400" />
-                          <h4 className="text-sm sm:text-base font-extrabold text-white">
+                    {/* Barra de Ação Principal: Gravar Fotos na Nuvem (Ativado assim que o usuário envia fotos) */}
+                    <div className="bg-stone-950 border-2 border-stone-800 hover:border-amber-500/40 p-5 rounded-3xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 shadow-2xl transition">
+                      <div className="space-y-1.5 flex-1">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                            <ImageIcon className="w-5 h-5" />
+                          </div>
+                          <h4 className="text-base font-extrabold text-white">
                             Fotos das 15 Patologias da Pintura (Doutor Parede)
                           </h4>
+                          {patologiasModificadas ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-stone-950 text-[10px] font-black uppercase tracking-wider animate-pulse flex items-center gap-1 shadow-xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-stone-950" />
+                              Gravação Necessária
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              Nuvem Sincronizada
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs text-stone-400 leading-relaxed max-w-2xl">
-                          Envie fotos do seu computador ou cole links de imagens da internet para cada um dos 15 problemas do bloco "Patologias da Pintura: Problemas Mais Comuns e Como Curar Cada Um". As alterações entram no ar imediatamente.
+                        <p className="text-xs text-stone-300 leading-relaxed">
+                          Envie fotos do seu computador ou cole links da internet. <strong>Assim que você enviar ou alterar qualquer foto, o botão "Gravar Fotos na Nuvem" é ativado.</strong> Ao clicar em Gravar, as fotos são salvas permanentemente no Supabase, atualizam o site imediatamente e passam a ser carregadas da nuvem em todas as visitas.
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleCarregarTodasFotosPadrao}
-                        className="py-2.5 px-4 rounded-xl bg-stone-850 hover:bg-stone-800 text-amber-400 border border-stone-750 font-bold text-xs flex items-center gap-2 transition cursor-pointer shrink-0"
-                        title="Restaurar todas as 15 fotos para a galeria padrão em alta resolução"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Restaurar Todas (Padrão)</span>
-                      </button>
+                      {/* Botão de Gravar Fotos na Nuvem (Super Destacado e Reativo) */}
+                      <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleGravarFotosPatologiasNuvem}
+                          disabled={salvandoPatologiasNuvem || !patologiasModificadas}
+                          className={`w-full sm:w-auto py-3.5 px-6 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all shadow-xl cursor-pointer ${
+                            patologiasModificadas
+                              ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-stone-950 shadow-amber-500/30 ring-4 ring-amber-400/30 transform hover:-translate-y-0.5 active:translate-y-0'
+                              : 'bg-stone-850 text-stone-500 border border-stone-800 opacity-60 cursor-not-allowed'
+                          }`}
+                          title={patologiasModificadas ? "Gravar fotos na nuvem no Supabase" : "Envie uma foto ou cole um link para ativar a gravação"}
+                        >
+                          {salvandoPatologiasNuvem ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                              <span>Gravando na Nuvem do Supabase...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Cloud className={`w-4 h-4 ${patologiasModificadas ? 'text-stone-950 stroke-[2.5]' : 'text-stone-500'}`} />
+                              <span>{patologiasModificadas ? "Gravar Fotos na Nuvem" : "Fotos Sincronizadas"}</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleCarregarTodasFotosPadrao}
+                          className="py-3 px-3.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-amber-400/90 border border-stone-800 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                          title="Restaurar todas as 15 fotos para a galeria padrão em alta resolução"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Restaurar Padrão</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Grade das 15 Patologias */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {patologias.map((p) => {
                         const fotoAtual = patologiaFotos[p.id] || DEFAULT_PATOLOGIA_FOTOS[p.id] || p.img;
+                        const isEditada = patologiaEditadaIds.includes(p.id);
                         return (
                           <div 
                             key={p.id} 
-                            className="bg-stone-950 border border-stone-800 hover:border-stone-700 rounded-2xl p-4 space-y-3 transition flex flex-col justify-between"
+                            className={`bg-stone-950 rounded-2xl p-4 sm:p-5 space-y-3.5 transition flex flex-col justify-between border ${
+                              isEditada
+                                ? 'border-amber-500/70 shadow-lg shadow-amber-500/10'
+                                : 'border-stone-800 hover:border-stone-700'
+                            }`}
                           >
-                            <div className="space-y-2">
-                              {/* Título e Tipo */}
+                            <div className="space-y-2.5">
+                              {/* Título, Tipo e Indicador de Modificação */}
                               <div className="flex items-start justify-between gap-2">
                                 <div>
-                                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
-                                    #{p.id} • {p.tipo}
-                                  </span>
-                                  <h5 className="font-bold text-white text-xs mt-1 leading-snug">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
+                                      #{p.id} • {p.tipo}
+                                    </span>
+                                    {isEditada && (
+                                      <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider animate-pulse">
+                                        ● Alterada
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h5 className="font-bold text-white text-sm mt-1.5 leading-snug">
                                     {p.titulo}
                                   </h5>
                                 </div>
                               </div>
 
                               {/* Miniatura da Foto Atual */}
-                              <div className="relative rounded-xl overflow-hidden aspect-16/9 bg-stone-900 border border-stone-800 group">
+                              <div className="relative rounded-xl overflow-hidden aspect-16/9 bg-stone-900 border border-stone-800 group shadow-inner">
                                 <img 
                                   src={fotoAtual} 
                                   alt={p.titulo} 
@@ -3620,17 +3732,17 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                                     }
                                   }}
                                 />
-                                <div className="absolute top-2 right-2 bg-stone-950/80 px-2 py-0.5 rounded text-[10px] text-stone-300">
+                                <div className="absolute top-2 right-2 bg-stone-950/85 backdrop-blur-xs px-2.5 py-0.5 rounded-full text-[10px] text-stone-300 border border-stone-800">
                                   {fotoAtual.startsWith('data:') ? 'Foto enviada do PC' : 'Link Web'}
                                 </div>
                               </div>
                             </div>
 
                             {/* Controles de Atualização */}
-                            <div className="space-y-2 pt-1 border-t border-stone-900">
+                            <div className="space-y-2 pt-2 border-t border-stone-900">
                               {/* Botão de Envio de Arquivo do Computador */}
-                              <label className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs">
-                                <Upload className="w-3.5 h-3.5" />
+                              <label className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-amber-500/20">
+                                <Upload className="w-4 h-4 stroke-[2.5]" />
                                 <span>Enviar Foto do Computador</span>
                                 <input 
                                   type="file" 
@@ -3644,27 +3756,49 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                               <div className="flex gap-1.5">
                                 <input 
                                   type="url" 
-                                  placeholder="Ou cole a URL da imagem..." 
+                                  placeholder="Ou cole a URL da imagem aqui..." 
                                   value={urlInputPatologias[p.id] || ''} 
                                   onChange={(e) => setUrlInputPatologias(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  className="flex-1 bg-stone-900 border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono placeholder:text-stone-600 focus:border-amber-500 focus:outline-hidden"
+                                  className="flex-1 bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder:text-stone-600 focus:border-amber-500 focus:outline-hidden"
                                 />
                                 <button 
                                   type="button"
                                   onClick={() => handleSalvarUrlPatologia(p.id)}
                                   disabled={!urlInputPatologias[p.id]?.trim()}
-                                  className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 disabled:opacity-40 text-stone-200 text-xs font-semibold cursor-pointer transition border border-stone-700 shrink-0"
+                                  className="px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-750 disabled:opacity-40 text-stone-200 text-xs font-bold cursor-pointer transition border border-stone-700 shrink-0"
                                 >
-                                  Salvar
+                                  Aplicar
                                 </button>
                               </div>
+
+                              {/* Botão Gravar Individual / Status */}
+                              {isEditada && (
+                                <button
+                                  type="button"
+                                  onClick={handleGravarFotosPatologiasNuvem}
+                                  disabled={salvandoPatologiasNuvem}
+                                  className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
+                                >
+                                  {salvandoPatologiasNuvem ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Gravando no Supabase...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Cloud className="w-3.5 h-3.5" />
+                                      <span>Gravar Esta Foto na Nuvem Agora</span>
+                                    </>
+                                  )}
+                                </button>
+                              )}
 
                               {/* Botão Restaurar Individual */}
                               <div className="flex items-center justify-between text-[11px] text-stone-400 pt-0.5">
                                 <button 
                                   type="button" 
                                   onClick={() => handleRestaurarFotoPatologia(p.id)}
-                                  className="text-stone-400 hover:text-amber-400 underline inline-flex items-center gap-1 cursor-pointer transition"
+                                  className="text-stone-400 hover:text-amber-400 underline inline-flex items-center gap-1 cursor-pointer transition text-[11px]"
                                 >
                                   <RotateCcw className="w-2.5 h-2.5" /> Restaurar imagem padrão
                                 </button>
@@ -3676,6 +3810,34 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                         );
                       })}
                     </div>
+
+                    {/* Barra Flutuante de Gravação no Rodapé do Modal quando há fotos modificadas */}
+                    {patologiasModificadas && (
+                      <div className="sticky bottom-0 z-20 p-4 rounded-2xl bg-amber-500 text-stone-950 font-black shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 border-2 border-amber-300">
+                        <div className="flex items-center gap-2 text-xs sm:text-sm">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping" />
+                          <span>Fotos alteradas prontas para gravação na nuvem!</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleGravarFotosPatologiasNuvem}
+                          disabled={salvandoPatologiasNuvem}
+                          className="w-full sm:w-auto py-2.5 px-6 rounded-xl bg-stone-950 hover:bg-stone-900 text-amber-400 font-black text-xs flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
+                        >
+                          {salvandoPatologiasNuvem ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                              <span>Gravando no Supabase...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Cloud className="w-4 h-4 text-amber-400" />
+                              <span>Gravar na Nuvem Agora</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {adminTab === 'temas' && (

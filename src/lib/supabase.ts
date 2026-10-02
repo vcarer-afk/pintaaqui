@@ -884,3 +884,103 @@ export async function carregarTemaSiteNuvem(): Promise<ThemePreset | null> {
   }
 }
 
+/**
+ * Salva o mapeamento completo das fotos das 15 patologias na nuvem no Supabase.
+ */
+export async function salvarFotosPatologiasNuvem(
+  fotos: Record<number, string>
+): Promise<{ success: boolean; latencyMs?: number; error?: string }> {
+  const startTime = performance.now();
+  try {
+    const supabase = getSupabaseClient();
+    
+    // 1. Remove qualquer configuração anterior de fotos das patologias
+    await supabase
+      .from('solicitacoes_orcamento')
+      .delete()
+      .eq('tipo_servico', 'config_patologias_fotos');
+
+    // 2. Insere as novas fotos na nuvem
+    const { error } = await supabase
+      .from('solicitacoes_orcamento')
+      .insert([{
+        nome_cliente: 'Sistema • Fotos Patologias',
+        telefone_cliente: '11999999999',
+        cidade: 'São Paulo',
+        tipo_servico: 'config_patologias_fotos',
+        descricao_projeto: JSON.stringify(fotos),
+        status: 'ativo'
+      }]);
+
+    const latencyMs = Math.round(performance.now() - startTime);
+
+    if (error) {
+      console.error('Erro ao salvar fotos das patologias no Supabase:', error);
+      return { success: false, error: error.message, latencyMs };
+    }
+
+    // Cache local imediato para abrir sem latência
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pintaaqui_patologia_fotos', JSON.stringify(fotos));
+    }
+
+    return { success: true, latencyMs };
+  } catch (err: any) {
+    const latencyMs = Math.round(performance.now() - startTime);
+    return { success: false, error: err?.message || 'Falha ao salvar fotos na nuvem.', latencyMs };
+  }
+}
+
+/**
+ * Carrega as fotos das 15 patologias diretamente da nuvem toda vez que o portal abre.
+ */
+export async function carregarFotosPatologiasNuvem(): Promise<Record<number, string> | null> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('solicitacoes_orcamento')
+      .select('descricao_projeto')
+      .eq('tipo_servico', 'config_patologias_fotos')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      if (typeof window !== 'undefined') {
+        const cachedRaw = localStorage.getItem('pintaaqui_patologia_fotos');
+        if (cachedRaw) {
+          try {
+            return JSON.parse(cachedRaw);
+          } catch (e) {}
+        }
+      }
+      return null;
+    }
+
+    const rawJson = data[0].descricao_projeto;
+    if (rawJson) {
+      try {
+        const parsed = JSON.parse(rawJson);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pintaaqui_patologia_fotos', JSON.stringify(parsed));
+        }
+        return parsed;
+      } catch (e) {
+        console.error('Erro ao fazer parse das fotos de patologias da nuvem:', e);
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error('Erro ao carregar fotos das patologias da nuvem:', err);
+    if (typeof window !== 'undefined') {
+      const cachedRaw = localStorage.getItem('pintaaqui_patologia_fotos');
+      if (cachedRaw) {
+        try {
+          return JSON.parse(cachedRaw);
+        } catch (e) {}
+      }
+    }
+    return null;
+  }
+}
+
+
