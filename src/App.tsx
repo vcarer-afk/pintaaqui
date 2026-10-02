@@ -1209,33 +1209,19 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
             </button>
 
             <button
-              onClick={() => setAreaPintorModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 font-bold text-xs shadow-2xs transition-all cursor-pointer"
-              title="Área do Pintor / Login & Ativação de Cadastro"
-            >
-              <Briefcase className="w-3.5 h-3.5 text-amber-500" />
-              <span>Área do Pintor</span>
-            </button>
-
-            <button
               onClick={() => setAdminModalOpen(true)}
               title={isAdminLoggedIn ? "Painel Administrativo (Conectado)" : "Acesso Administrativo"}
-              className={`p-2 rounded-xl transition-all border flex items-center gap-1.5 text-xs font-medium cursor-pointer ${
+              aria-label={isAdminLoggedIn ? "Painel Administrativo (Conectado)" : "Acesso Administrativo"}
+              className={`p-2.5 rounded-xl transition-all border flex items-center justify-center cursor-pointer ${
                 isAdminLoggedIn
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 shadow-2xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border-slate-200'
               }`}
             >
               {isAdminLoggedIn ? (
-                <>
-                  <Unlock className="w-4 h-4 text-emerald-600" />
-                  <span className="hidden sm:inline text-xs font-semibold text-emerald-700">Admin</span>
-                </>
+                <Unlock className="w-4 h-4 text-emerald-600" />
               ) : (
-                <>
-                  <Lock className="w-4 h-4 text-slate-500" />
-                  <span className="hidden sm:inline text-xs font-medium text-slate-600">Painel</span>
-                </>
+                <Lock className="w-4 h-4 text-slate-600" />
               )}
             </button>
 
@@ -2522,6 +2508,36 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   <div>
                     <span>Perfil verificado e auditado pela equipe <strong>Pinta Aqui</strong></span>
                   </div>
+                </div>
+
+                {/* Última Linha do Cartão de Visitas Digital: Área do Pintor */}
+                <div className="pt-5 border-t border-stone-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-stone-900 to-stone-900 border border-amber-500/30 shadow-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0 shadow-sm">
+                      <Briefcase className="w-5 h-5 text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-white text-sm">Área do Pintor Profissional</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                          Acesso & Ativação
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-300 mt-0.5 leading-snug">
+                        Já possui cadastro? Acesse sua conta com seu e-mail e senha criados ou ative seu cadastro com o código de 4 dígitos.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setAreaPintorModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 transition transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer shrink-0"
+                    title="Acessar ou Ativar Cadastro na Área do Pintor"
+                  >
+                    <Briefcase className="w-4 h-4" />
+                    <span>Área do Pintor</span>
+                  </button>
                 </div>
 
               </div>
@@ -4295,6 +4311,25 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Última Linha do Cartão de Visitas Digital: Área do Pintor */}
+              <div className="pt-4 border-t border-stone-850 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 text-stone-400">
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  <span>Cartão oficial do profissional auditado pela curadoria <strong>Pinta Aqui</strong></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPintorParaVisualizar(null);
+                    setAreaPintorModalOpen(true);
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-xs transition cursor-pointer shrink-0"
+                >
+                  <Briefcase className="w-3.5 h-3.5" />
+                  <span>Área do Pintor</span>
+                </button>
               </div>
             </article>
 
