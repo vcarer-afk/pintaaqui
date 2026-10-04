@@ -18,6 +18,12 @@
 }
 
 @layer base {
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+    -webkit-text-size-adjust: 100%;
+  }
+
   html {
     font-family: var(--font-theme-body, 'Plus Jakarta Sans', sans-serif);
     color: var(--color-theme-text, #1e293b);
@@ -31,6 +37,15 @@
     font-family: var(--font-theme-heading, 'Poppins', sans-serif);
     letter-spacing: -0.02em;
   }
+}
+
+/* Utilitário para barras de rolagem ocultas e suaves em mobile/tablets */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Custom visual utilities for smooth interaction */

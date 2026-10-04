@@ -28,7 +28,7 @@ export default function LogoPintaAqui({
       {/* Ícone Pin de Localização com Rolo de Pintura */}
       <svg
         viewBox="0 0 120 130"
-        className="w-auto h-8 sm:h-9 shrink-0 drop-shadow-xs"
+        className="w-auto h-7 sm:h-9 shrink-0 drop-shadow-xs"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
@@ -65,7 +65,7 @@ export default function LogoPintaAqui({
       </svg>
 
       {/* Tipografia Oficial: "pinta" (Azul Marinho) + "aqui" (Laranja) */}
-      <div className="flex items-baseline font-black tracking-tight leading-none text-2xl sm:text-3xl font-sans">
+      <div className="flex items-baseline font-black tracking-tight leading-none text-xl sm:text-2xl md:text-3xl font-sans">
         <span className="text-[#004B8D]">pinta</span>
         <span className="text-[#FF7A18]">aqui</span>
       </div>
