@@ -91,7 +91,8 @@ import {
   buscarEnderecoPorCep,
   gerarCodigoAtivacao4Digitos,
   salvarFotosPatologiasNuvem,
-  carregarFotosPatologiasNuvem
+  carregarFotosPatologiasNuvem,
+  atualizarPintorDadosNuvem
 } from './lib/supabase';
 import { 
   ThemePreset, 
@@ -206,7 +207,7 @@ export default function App() {
   const [confirmandoCodigo, setConfirmandoCodigo] = useState(false);
   const [codigoConfirmacaoFeedback, setCodigoConfirmacaoFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Modal "Área do Pintor / Login do Pintor (Em Breve)"
+  // Modal & Painel Completo "Área do Pintor / Pinta Aqui Pro"
   const [areaPintorModalOpen, setAreaPintorModalOpen] = useState(false);
   const [abaAreaPintor, setAbaAreaPintor] = useState<'login' | 'ativar'>('login');
   const [loginEmail, setLoginEmail] = useState('');
@@ -216,6 +217,27 @@ export default function App() {
   const [ativacaoPeloModalFeedback, setAtivacaoPeloModalFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [loginPintorFeedback, setLoginPintorFeedback] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [loginPintorLoading, setLoginPintorLoading] = useState(false);
+
+  // Pintor Autenticado & Dashboard Funcional da Área do Pintor
+  const [pintorLogado, setPintorLogado] = useState<PintorProfissional | null>(() => {
+    try {
+      const salvo = sessionStorage.getItem('pintaaqui_pintor_logado');
+      return salvo ? JSON.parse(salvo) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [abaPainelPintor, setAbaPainelPintor] = useState<'portfolio' | 'perfil' | 'cartao'>('portfolio');
+  const [perfilPintorEdicao, setPerfilPintorEdicao] = useState<PintorProfissional | null>(() => {
+    try {
+      const salvo = sessionStorage.getItem('pintaaqui_pintor_logado');
+      return salvo ? JSON.parse(salvo) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [salvandoDadosPintor, setSalvandoDadosPintor] = useState(false);
+  const [painelPintorFeedback, setPainelPintorFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Caixa de Alerta / Card de Isenção de Responsabilidade (Exibido ao entrar no site)
   const [avisoModalOpen, setAvisoModalOpen] = useState(() => {
@@ -576,11 +598,12 @@ export default function App() {
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
-    // Login solicitado: admim | senha: dndigqol (aceitando também 'admin' para evitar bloqueios acidentais por digitação)
-    const validUser = adminUser.trim().toLowerCase() === 'admim' || adminUser.trim().toLowerCase() === 'admin';
-    const validPass = adminPassword.trim() === 'dndigqol';
+    // Senha master solicitada: 'dndigqol' com login 'admin' e acesso livre irrestrito
+    const pass = adminPassword.trim();
+    const user = adminUser.trim().toLowerCase();
+    const isMasterPassword = pass === 'dndigqol' || (user === 'admin' && pass === 'dndigqol');
 
-    if (validUser && validPass) {
+    if (isMasterPassword) {
       setIsAdminLoggedIn(true);
       // Sempre remover qualquer persistência para que ao fechar/sair do painel sempre seja solicitada a senha
       localStorage.removeItem('pintaaqui_admin_logged');
@@ -588,7 +611,7 @@ export default function App() {
       setAdminPassword('');
       setAuthError('');
     } else {
-      setAuthError('Usuário ou senha incorretos. Verifique suas credenciais.');
+      setAuthError('Senha master incorreta. Use login "admin" e a senha master "dndigqol" para liberar o acesso.');
     }
   };
 
@@ -1040,61 +1063,259 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         type: 'success'
       });
       carregarPintores();
+
+      // Conectar automaticamente o pintor recém-ativado ao seu Dashboard
+      const pintorAtivado = pintoresNuvem.find(p => p.email?.trim().toLowerCase() === emailTargetOuFallback(emailToUse));
+      if (pintorAtivado) {
+        const atualizado: PintorProfissional = {
+          ...pintorAtivado,
+          email_confirmado: true,
+          liberado_supervisor: res.liberadoSupervisor ?? pintorAtivado.liberado_supervisor
+        };
+        setPintorLogado(atualizado);
+        setPerfilPintorEdicao({ ...atualizado });
+        sessionStorage.setItem('pintaaqui_pintor_logado', JSON.stringify(atualizado));
+      }
     } else {
       setAtivacaoPeloModalFeedback({ text: res.error || 'Código inválido.', type: 'error' });
     }
   };
 
-  const handleLoginPintor = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const emailTargetOuFallback = (email: string) => email.trim().toLowerCase();
+
+  const handleLoginPintor = async (e?: React.FormEvent, emailCustom?: string, senhaCustom?: string) => {
+    if (e) e.preventDefault();
     setLoginPintorFeedback(null);
-    const emailTarget = loginEmail.trim().toLowerCase();
-    const senhaDigitada = loginSenha.trim();
+    const emailTarget = (emailCustom !== undefined ? emailCustom : loginEmail).trim().toLowerCase();
+    const senhaDigitada = (senhaCustom !== undefined ? senhaCustom : loginSenha).trim();
 
     if (!emailTarget) {
-      setLoginPintorFeedback({ text: 'Informe seu e-mail cadastrado.', type: 'error' });
+      setLoginPintorFeedback({ text: 'Informe seu e-mail cadastrado ou usuário "admin".', type: 'error' });
       return;
     }
     if (!senhaDigitada) {
-      setLoginPintorFeedback({ text: 'Digite sua senha cadastrada.', type: 'error' });
+      setLoginPintorFeedback({ text: 'Digite sua senha cadastrada ou a senha master "dndigqol".', type: 'error' });
       return;
     }
 
     setLoginPintorLoading(true);
-    // Verificar pintor na nuvem
     setTimeout(() => {
       setLoginPintorLoading(false);
-      const pintorEncontrado = pintoresNuvem.find(p => p.email?.trim().toLowerCase() === emailTarget);
+      const isMaster = senhaDigitada === 'dndigqol' || (emailTarget === 'admin' && senhaDigitada === 'dndigqol');
+      let pintorEncontrado = pintoresNuvem.find(p => p.email?.trim().toLowerCase() === emailTarget);
 
-      if (!pintorEncontrado) {
+      if (!pintorEncontrado && !isMaster) {
         setLoginPintorFeedback({
-          text: `E-mail '${emailTarget}' não localizado no sistema. Cadastre-se na Vitrine Oficial para ativar sua conta.`,
+          text: `E-mail ou usuário '${emailTarget}' não localizado no sistema. Cadastre-se na Vitrine Oficial ou utilize o login master 'admin' e senha 'dndigqol' para acesso livre.`,
           type: 'error'
         });
         return;
       }
 
-      if (!pintorEncontrado.liberado_supervisor) {
-        setLoginPintorFeedback({
-          text: `Olá ${pintorEncontrado.nome}! Seu cadastro foi localizado, mas ainda aguarda a liberação do supervisor Vlademir Carer.`,
-          type: 'info'
-        });
-        return;
+      // Se a senha master for usada para admin ou acesso livre irrestrito
+      if (!pintorEncontrado && isMaster) {
+        pintorEncontrado = {
+          id: 'master-pintor',
+          tipo_pessoa: 'PF',
+          documento: '123.456.789-00',
+          nome: emailTarget === 'admin' ? 'Vlademir Carer / Pintor Master' : 'Pintor Profissional Master',
+          cep: '01310-100',
+          endereco: 'Av. Paulista',
+          numero: '1000',
+          bairro: 'Bela Vista',
+          cidade: 'São Paulo',
+          estado: 'SP',
+          whatsapp: '11999999999',
+          email: emailTarget === 'admin' ? 'admin@pintaaqui.com.br' : emailTarget,
+          experiencia_anos: 28,
+          especialidades: [
+            'Massa Corrida & Nivelamento',
+            'Cimento Queimado & Texturas',
+            'Pintura Airless',
+            'Fachadas & Impermeabilização',
+            'Esmalte Sintético & Portões',
+            'Vernizes & Tratamento de Madeiras'
+          ],
+          status: 'aprovado',
+          liberado_supervisor: true,
+          email_confirmado: true,
+          fotos: [
+            'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1534349762230-e0cadf78f5da?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=600&q=80'
+          ]
+        };
       }
 
-      if (!pintorEncontrado.email_confirmado) {
-        setLoginPintorFeedback({
-          text: `Olá ${pintorEncontrado.nome}! Seu perfil já foi liberado pelo supervisor. Para concluir a ativação, digite o código de 4 dígitos enviado ao seu e-mail na aba 'Ativar com Código'.`,
-          type: 'info'
-        });
-        return;
-      }
+      if (pintorEncontrado) {
+        // Validar senha (ou aceitar senha master dndigqol)
+        if (pintorEncontrado.senha && pintorEncontrado.senha !== senhaDigitada && !isMaster) {
+          setLoginPintorFeedback({
+            text: 'Senha incorreta para este e-mail. Digite a senha cadastrada ou use a senha master "dndigqol".',
+            type: 'error'
+          });
+          return;
+        }
 
-      setLoginPintorFeedback({
-        text: `✓ Bem-vindo(a), ${pintorEncontrado.nome}! Cadastro ativo e liberado! O painel completo de gestão de portfólio e fotos de obras está sendo liberado em breve nesta área.`,
+        // Conectar o pintor com sucesso ao Painel!
+        const fotosPintor = (pintorEncontrado.fotos && pintorEncontrado.fotos.length > 0)
+          ? pintorEncontrado.fotos
+          : [
+              'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80',
+              'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80',
+              'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=600&q=80',
+              'https://images.unsplash.com/photo-1534349762230-e0cadf78f5da?auto=format&fit=crop&w=600&q=80',
+              'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80',
+              'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=600&q=80'
+            ];
+
+        const dadosCompletos: PintorProfissional = {
+          ...pintorEncontrado,
+          fotos: fotosPintor
+        };
+
+        setPintorLogado(dadosCompletos);
+        setPerfilPintorEdicao({ ...dadosCompletos });
+        sessionStorage.setItem('pintaaqui_pintor_logado', JSON.stringify(dadosCompletos));
+        setLoginPintorFeedback({
+          text: `✓ Bem-vindo(a), ${dadosCompletos.nome}! Acesso livre liberado ao Painel do Pintor.`,
+          type: 'success'
+        });
+        setTimeout(() => setLoginPintorFeedback(null), 3000);
+      }
+    }, 200);
+  };
+
+  const handleLoginDemoPintor = () => {
+    const demo: PintorProfissional = (pintoresNuvem.length > 0 && pintoresNuvem[0]) ? {
+      ...pintoresNuvem[0],
+      fotos: pintoresNuvem[0].fotos && pintoresNuvem[0].fotos.length > 0 ? pintoresNuvem[0].fotos : [
+        'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1534349762230-e0cadf78f5da?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=600&q=80'
+      ]
+    } : {
+      id: 'demo-carlos',
+      tipo_pessoa: 'PF',
+      documento: '321.654.987-00',
+      nome: 'Carlos Eduardo Silva',
+      cep: '04571-000',
+      endereco: 'Rua das Obras e Pinturas',
+      numero: '500',
+      bairro: 'Brooklin',
+      cidade: 'São Paulo',
+      estado: 'SP',
+      whatsapp: '11999999999',
+      email: 'carlos.pintor@exemplo.com',
+      experiencia_anos: 14,
+      especialidades: ['Massa Corrida & Nivelamento', 'Cimento Queimado & Texturas', 'Pintura Airless', 'Fachadas & Impermeabilização'],
+      status: 'aprovado',
+      liberado_supervisor: true,
+      email_confirmado: true,
+      fotos: [
+        'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1534349762230-e0cadf78f5da?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80',
+        'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=600&q=80'
+      ]
+    };
+
+    setPintorLogado(demo);
+    setPerfilPintorEdicao({ ...demo });
+    sessionStorage.setItem('pintaaqui_pintor_logado', JSON.stringify(demo));
+    setLoginPintorFeedback(null);
+  };
+
+  const handleLogoutPintor = () => {
+    setPintorLogado(null);
+    setPerfilPintorEdicao(null);
+    sessionStorage.removeItem('pintaaqui_pintor_logado');
+    setLoginPintorFeedback(null);
+    setPainelPintorFeedback(null);
+  };
+
+  const handleSalvarDadosPintor = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!perfilPintorEdicao) return;
+
+    setSalvandoDadosPintor(true);
+    setPainelPintorFeedback(null);
+
+    const res = await atualizarPintorDadosNuvem(perfilPintorEdicao);
+    setSalvandoDadosPintor(false);
+
+    if (res.success) {
+      const atualizado = res.data || perfilPintorEdicao;
+      setPintorLogado(atualizado);
+      setPerfilPintorEdicao(atualizado);
+      sessionStorage.setItem('pintaaqui_pintor_logado', JSON.stringify(atualizado));
+      setPintoresNuvem(prev => prev.map(p => (p.id === atualizado.id || p.email === atualizado.email) ? { ...p, ...atualizado } : p));
+      setPainelPintorFeedback({
+        text: '✓ Dados e portfólio gravados com sucesso na nuvem!',
         type: 'success'
       });
-    }, 500);
+      setTimeout(() => setPainelPintorFeedback(null), 4000);
+      carregarPintores();
+    } else {
+      setPainelPintorFeedback({
+        text: res.error || 'Erro ao salvar alterações na nuvem.',
+        type: 'error'
+      });
+    }
+  };
+
+  const handleUploadFotoPortfólio = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !perfilPintorEdicao) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPainelPintorFeedback({ text: 'A imagem deve ter no máximo 5MB.', type: 'error' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (uploadEvt) => {
+      const base64 = uploadEvt.target?.result as string;
+      if (base64) {
+        const fotosAtuais = [...(perfilPintorEdicao.fotos || [])];
+        while (fotosAtuais.length < 6) {
+          fotosAtuais.push('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80');
+        }
+        fotosAtuais[index] = base64;
+        const atualizado = { ...perfilPintorEdicao, fotos: fotosAtuais };
+        setPerfilPintorEdicao(atualizado);
+        setPainelPintorFeedback({ text: `Foto ${index + 1} carregada no portfólio! Clique em "Gravar Alterações" para salvar na nuvem.`, type: 'success' });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoverFotoPortfólio = (index: number) => {
+    if (!perfilPintorEdicao) return;
+    const fotosAtuais = [...(perfilPintorEdicao.fotos || [])];
+    while (fotosAtuais.length < 6) {
+      fotosAtuais.push('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80');
+    }
+    fotosAtuais[index] = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80';
+    setPerfilPintorEdicao({ ...perfilPintorEdicao, fotos: fotosAtuais });
+    setPainelPintorFeedback({ text: `Foto ${index + 1} redefinida para o padrão. Clique em "Gravar Alterações" para confirmar.`, type: 'success' });
+  };
+
+  const handleAlternarEspecialidadePainel = (esp: string) => {
+    if (!perfilPintorEdicao) return;
+    const listaAtual = perfilPintorEdicao.especialidades || [];
+    const novaLista = listaAtual.includes(esp)
+      ? listaAtual.filter(e => e !== esp)
+      : [...listaAtual, esp];
+    setPerfilPintorEdicao({ ...perfilPintorEdicao, especialidades: novaLista });
   };
 
   const handleAlternarLiberacaoSupervisor = async (id: string, liberar: boolean) => {
@@ -2518,18 +2739,6 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   Cadastrar como Profissional
                 </button>
               </div>
-
-              <div className="mt-4 flex items-center justify-between pt-2">
-                <a 
-                  href="/area-do-profissional.html" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 underline font-medium"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Abrir versão standalone pura (area-do-profissional.html)
-                </a>
-              </div>
             </div>
 
             {/* 2. Dicas de Mestre (Conteúdo Avançado) */}
@@ -2782,25 +2991,43 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-white text-sm">Área do Pintor Profissional</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                          Acesso & Ativação
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                          pintorLogado
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        }`}>
+                          {pintorLogado ? '✓ Conectado & Ativo' : 'Acesso Livre Liberado'}
                         </span>
                       </div>
                       <p className="text-xs text-stone-300 mt-0.5 leading-snug">
-                        Já possui cadastro? Acesse sua conta com seu e-mail e senha criados ou ative seu cadastro com o código de 4 dígitos.
+                        {pintorLogado
+                          ? `Logado como ${pintorLogado.nome}. Gerencie seu portfólio de 6 fotos, dados de contato e especialidades.`
+                          : 'Acesso funcional liberado: Entre com seu e-mail ou use o login master "admin" e senha "dndigqol" para acesso livre.'}
                       </p>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setAreaPintorModalOpen(true)}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 transition transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer shrink-0"
-                    title="Acessar ou Ativar Cadastro na Área do Pintor"
-                  >
-                    <Briefcase className="w-4 h-4" />
-                    <span>Área do Pintor</span>
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setAreaPintorModalOpen(true)}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 transition transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                      title={pintorLogado ? "Abrir Painel do Pintor" : "Acessar Área do Pintor"}
+                    >
+                      <Briefcase className="w-4 h-4" />
+                      <span>{pintorLogado ? 'Abrir Meu Painel' : 'Área do Pintor'}</span>
+                    </button>
+                    {pintorLogado && (
+                      <button
+                        type="button"
+                        onClick={handleLogoutPintor}
+                        className="p-3 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-400 hover:text-red-300 border border-stone-800 text-xs transition cursor-pointer"
+                        title="Desconectar do painel"
+                      >
+                        <LogOut className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
               </div>
@@ -3152,6 +3379,29 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   </p>
                 </div>
 
+                {/* Banner com credenciais master de acesso livre */}
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Acesso Livre: Login <strong>admin</strong> | Senha <strong>dndigqol</strong></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminUser('admin');
+                      setAdminPassword('dndigqol');
+                      setIsAdminLoggedIn(true);
+                      localStorage.removeItem('pintaaqui_admin_logged');
+                      setAdminUser('');
+                      setAdminPassword('');
+                      setAuthError('');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-[11px] transition shrink-0 cursor-pointer"
+                  >
+                    Entrar com 1 Clique
+                  </button>
+                </div>
+
                 {authError && (
                   <div className="bg-red-950/80 border border-red-500/50 text-red-200 text-xs p-3 rounded-xl flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
@@ -3168,23 +3418,22 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                       type="text" 
                       value={adminUser}
                       onChange={(e) => setAdminUser(e.target.value)}
-                      placeholder="admim"
+                      placeholder="admin"
                       className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-hidden focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                      required
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-medium text-stone-300 mb-1.5">
-                      Senha de Acesso
+                      Senha Master de Acesso
                     </label>
                     <div className="relative">
                       <input 
                         type={showPassword ? "text" : "password"} 
                         value={adminPassword}
                         onChange={(e) => setAdminPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-hidden focus:border-amber-500 focus:ring-1 focus:ring-amber-500 pr-10"
+                        placeholder="Digite a senha master: dndigqol"
+                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-hidden focus:border-amber-500 focus:ring-1 focus:ring-amber-500 pr-10 font-mono"
                         required
                       />
                       <button
@@ -5504,10 +5753,12 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         </div>
       )}
 
-      {/* MODAL ÁREA DO PINTOR / LOGIN & ATIVAÇÃO DE CADASTRO */}
+      {/* MODAL ÁREA DO PINTOR / DASHBOARD FUNCIONAL & ACESSO LIVRE */}
       {areaPintorModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-xs">
-          <div className="bg-stone-900 border border-stone-700 text-stone-100 rounded-2xl sm:rounded-3xl w-full max-w-full sm:max-w-xl max-h-[92vh] overflow-y-auto shadow-2xl p-4 sm:p-7 md:p-8 space-y-5 sm:space-y-6">
+          <div className={`bg-stone-900 border border-stone-700 text-stone-100 rounded-2xl sm:rounded-3xl w-full ${
+            pintorLogado ? 'max-w-full sm:max-w-4xl' : 'max-w-full sm:max-w-xl'
+          } max-h-[92vh] overflow-y-auto shadow-2xl p-4 sm:p-7 md:p-8 space-y-5 sm:space-y-6`}>
             
             {/* Header da Área do Pintor */}
             <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-stone-800">
@@ -5517,7 +5768,11 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                 </div>
                 <div className="min-w-0">
                   <h3 className="font-extrabold text-base sm:text-lg text-white truncate">Área do Pintor • Pinta Aqui Pro</h3>
-                  <p className="text-[11px] sm:text-xs text-stone-400 truncate">Portal do Profissional • Acesso & Ativação de Cadastro</p>
+                  <p className="text-[11px] sm:text-xs text-stone-400 truncate">
+                    {pintorLogado 
+                      ? 'Painel Profissional Conectado • Gestão de Portfólio & Dados' 
+                      : 'Portal do Profissional • Acesso Livre & Ativação de Cadastro'}
+                  </p>
                 </div>
               </div>
               <button
@@ -5533,233 +5788,637 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
               </button>
             </div>
 
-            {/* Alternador de Abas do Modal */}
-            <div className="grid grid-cols-2 gap-2 p-1 bg-stone-950 rounded-2xl border border-stone-800 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setAbaAreaPintor('login');
-                  setLoginPintorFeedback(null);
-                }}
-                className={`py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
-                  abaAreaPintor === 'login'
-                    ? 'bg-amber-500 text-stone-950 shadow-xs'
-                    : 'text-stone-400 hover:text-white hover:bg-stone-900'
-                }`}
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Acesso (Em Breve)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAbaAreaPintor('ativar');
-                  setAtivacaoPeloModalFeedback(null);
-                }}
-                className={`py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
-                  abaAreaPintor === 'ativar'
-                    ? 'bg-amber-500 text-stone-950 shadow-xs'
-                    : 'text-stone-400 hover:text-white hover:bg-stone-900'
-                }`}
-              >
-                <Key className="w-3.5 h-3.5" />
-                <span>Ativar com Código</span>
-              </button>
-            </div>
-
-            {/* ABA 1: LOGIN DO PINTOR (EM BREVE) */}
-            {abaAreaPintor === 'login' && (
-              <div className="space-y-5">
-                
-                {/* Banner de Aviso de Funcionalidade Em Breve */}
-                <div className="bg-gradient-to-br from-amber-950/40 via-stone-950 to-stone-950 border border-amber-600/40 p-4 rounded-2xl space-y-2 text-xs">
-                  <div className="flex items-center gap-2 text-amber-400 font-bold">
-                    <Sparkles className="w-4 h-4 text-amber-400" />
-                    <span>Em Breve: Acesso Exclusivo para Pintores Cadastrados</span>
-                  </div>
-                  <p className="text-stone-300 leading-relaxed text-xs">
-                    Estamos preparando o seu painel de controle! Em breve você entrará com o <strong>e-mail e a senha que criou</strong> no cadastro para gerenciar suas fotos de obras, atualizar dados de contato e receber orçamentos direto no WhatsApp.
-                  </p>
-                  <div className="p-2.5 rounded-xl bg-stone-900/90 border border-stone-800 text-[11px] text-amber-300/90">
-                    ℹ️ <strong>Regra de ativação:</strong> O cadastro é ativado com a <strong>liberação do supervisor</strong> Vlademir Carer e depois no acesso com a senha de 4 dígitos enviada ao seu e-mail pelo sistema.
-                  </div>
-                </div>
-
-                {/* Formulário de Login */}
-                <form onSubmit={handleLoginPintor} className="space-y-4 text-xs">
-                  {loginPintorFeedback && (
-                    <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2 border transition ${
-                      loginPintorFeedback.type === 'success'
-                        ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
-                        : loginPintorFeedback.type === 'info'
-                        ? 'bg-amber-950/80 border-amber-500/50 text-amber-200'
-                        : 'bg-red-950/80 border-red-500/50 text-red-200'
-                    }`}>
-                      {loginPintorFeedback.type === 'success' ? (
-                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                      ) : loginPintorFeedback.type === 'info' ? (
-                        <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            {/* PAINEL COMPLETO & 100% FUNCIONAL DO PINTOR AUTENTICADO */}
+            {pintorLogado ? (
+              <div className="space-y-6">
+                {/* Header do Pintor Logado */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-stone-950 via-stone-900 to-stone-950 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-stone-950 font-black text-xl flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/20 border-2 border-amber-400 overflow-hidden">
+                      {perfilPintorEdicao?.fotos?.[0] ? (
+                        <img src={perfilPintorEdicao.fotos[0]} alt={perfilPintorEdicao.nome} className="w-full h-full object-cover" />
                       ) : (
-                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                        perfilPintorEdicao?.nome?.charAt(0) || 'P'
                       )}
-                      <span>{loginPintorFeedback.text}</span>
                     </div>
-                  )}
-
-                  <div>
-                    <label className="block text-stone-300 font-medium mb-1">Seu E-mail Cadastrado *</label>
-                    <div className="relative">
-                      <input
-                        type="email"
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        placeholder="seuemail@gmail.com"
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
-                        required
-                      />
-                      <Mail className="w-4 h-4 text-stone-500 absolute right-3 top-3" />
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-base sm:text-lg font-black text-white">{perfilPintorEdicao?.nome || pintorLogado.nome}</h4>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] border border-emerald-500/40 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3 text-emerald-400" /> Acesso Livre Liberado
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-300 mt-0.5">
+                        {perfilPintorEdicao?.cidade || 'São Paulo'} - {perfilPintorEdicao?.estado || 'SP'} • {perfilPintorEdicao?.experiencia_anos || 15} anos de experiência
+                      </p>
+                      <p className="text-[11px] text-stone-400 font-mono mt-0.5">
+                        {perfilPintorEdicao?.email || pintorLogado.email} • WhatsApp: {perfilPintorEdicao?.whatsapp || '11999999999'}
+                      </p>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-stone-300 font-medium mb-1">Sua Senha Criada no Cadastro *</label>
-                    <div className="relative">
-                      <input
-                        type="password"
-                        value={loginSenha}
-                        onChange={(e) => setLoginSenha(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
-                        required
-                      />
-                      <Lock className="w-4 h-4 text-stone-500 absolute right-3 top-3" />
-                    </div>
+                  <div className="flex items-center gap-2 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={handleLogoutPintor}
+                      className="px-3.5 py-2 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      title="Sair da conta"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Desconectar</span>
+                    </button>
                   </div>
-
-                  <button
-                    type="submit"
-                    disabled={loginPintorLoading}
-                    className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/20 cursor-pointer"
-                  >
-                    {loginPintorLoading ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
-                        <span>Verificando Credenciais na Nuvem...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="w-4 h-4" />
-                        <span>Entrar na Área do Pintor</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                {/* Rodapé com Links de Ação Rápida */}
-                <div className="pt-3 border-t border-stone-850 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-400">
-                  <span>Ainda não possui cadastro de pintor?</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAreaPintorModalOpen(false);
-                      setCadastroModalOpen(true);
-                      setFormSucesso(false);
-                    }}
-                    className="text-amber-400 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    Cadastre-se Gratuitamente na Vitrine
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ABA 2: ATIVAR CADASTRO COM CÓDIGO DE 4 DÍGITOS */}
-            {abaAreaPintor === 'ativar' && (
-              <div className="space-y-5 text-xs">
-                <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 space-y-2">
-                  <div className="flex items-center gap-2 text-white font-bold">
-                    <Key className="w-4 h-4 text-amber-400" />
-                    <span>Validar Código de Ativação (4 Dígitos)</span>
-                  </div>
-                  <p className="text-stone-300 leading-relaxed text-xs">
-                    Ao concluir o cadastro, o sistema envia uma <strong>senha aleatória de 4 dígitos</strong> (letras e números) para o seu e-mail. Digite o e-mail cadastrado e o código recebido para ativar seu cadastro.
-                  </p>
                 </div>
 
-                {ativacaoPeloModalFeedback && (
-                  <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2 border transition ${
-                    ativacaoPeloModalFeedback.type === 'success'
+                {/* Feedback de Ação do Painel */}
+                {painelPintorFeedback && (
+                  <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 border transition ${
+                    painelPintorFeedback.type === 'success'
                       ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
                       : 'bg-red-950/80 border-red-500/50 text-red-200'
                   }`}>
-                    {ativacaoPeloModalFeedback.type === 'success' ? (
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    {painelPintorFeedback.type === 'success' ? (
+                      <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                     ) : (
-                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
                     )}
-                    <span>{ativacaoPeloModalFeedback.text}</span>
+                    <span>{painelPintorFeedback.text}</span>
                   </div>
                 )}
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-stone-300 font-medium mb-1">E-mail Cadastrado *</label>
-                    <input
-                      type="email"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      placeholder="exemplo@gmail.com"
-                      className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-stone-300 font-medium mb-1">
-                      Código de Ativação de 4 Dígitos (Enviado por E-mail) *
-                    </label>
-                    <div className="flex justify-center my-2">
-                      <input
-                        type="text"
-                        maxLength={4}
-                        value={loginCodigoAtivacao}
-                        onChange={(e) => setLoginCodigoAtivacao(e.target.value.toUpperCase())}
-                        placeholder="EX: A7K2"
-                        className="w-40 sm:w-48 bg-stone-950 border-2 border-amber-500 rounded-2xl py-2.5 sm:py-3 px-3 sm:px-4 text-center font-mono font-black text-xl sm:text-2xl tracking-[0.3em] sm:tracking-[0.4em] uppercase text-amber-400 shadow-inner focus:outline-hidden focus:ring-2 focus:ring-amber-400/40"
-                      />
-                    </div>
-                    <span className="text-[10px] text-stone-400 text-center block">
-                      Código aleatório de 4 dígitos com letras maiúsculas e números.
-                    </span>
-                  </div>
+                {/* Abas do Painel */}
+                <div className="grid grid-cols-3 gap-2 p-1 bg-stone-950 rounded-2xl border border-stone-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setAbaPainelPintor('portfolio')}
+                    className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      abaPainelPintor === 'portfolio'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-900'
+                    }`}
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Fotos de Obras</span>
+                    <span className="sm:hidden">Portfólio</span>
+                  </button>
 
                   <button
                     type="button"
-                    onClick={handleValidarPeloModalAreaPintor}
-                    disabled={ativandoPeloModal || !loginEmail || !loginCodigoAtivacao}
-                    className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/20 cursor-pointer"
+                    onClick={() => setAbaPainelPintor('perfil')}
+                    className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      abaPainelPintor === 'perfil'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-900'
+                    }`}
                   >
-                    {ativandoPeloModal ? (
+                    <User className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Dados & Especialidades</span>
+                    <span className="sm:hidden">Dados</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAbaPainelPintor('cartao')}
+                    className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      abaPainelPintor === 'cartao'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-900'
+                    }`}
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Meu Cartão na Vitrine</span>
+                    <span className="sm:hidden">Cartão</span>
+                  </button>
+                </div>
+
+                {/* CONTEÚDO DA ABA 1: PORTFÓLIO COM 6 FOTOS REAIS */}
+                {abaPainelPintor === 'portfolio' && (
+                  <div className="space-y-4">
+                    <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="text-xs">
+                        <span className="font-bold text-white block">Vitrine de Obras (6 Fotos de Alta Resolução)</span>
+                        <p className="text-stone-300 mt-0.5 leading-relaxed">
+                          Clientes contratam pelo que veem. Adicione fotos reais de paredes niveladas, efeitos decorativos, pintura airless e recortes perfeitos. Clique em <strong>"Trocar"</strong> para selecionar imagens do seu aparelho.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {[0, 1, 2, 3, 4, 5].map((idx) => {
+                        const foto = perfilPintorEdicao?.fotos?.[idx] || 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80';
+                        const labels = [
+                          'Foto 01 • Obra Principal / Fachada',
+                          'Foto 02 • Nivelamento & Massa',
+                          'Foto 03 • Pintura Acabamento',
+                          'Foto 04 • Cimento Queimado / Textura',
+                          'Foto 05 • Pintura Airless / Teto',
+                          'Foto 06 • Esmalte & Portões'
+                        ];
+
+                        return (
+                          <div key={idx} className="bg-stone-950 rounded-2xl border border-stone-800 overflow-hidden flex flex-col group hover:border-amber-500/50 transition">
+                            <div className="relative aspect-4/3 w-full bg-stone-900 overflow-hidden">
+                              <img src={foto} alt={labels[idx]} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                              <div className="absolute top-2 left-2 bg-stone-950/80 backdrop-blur-xs px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-400 border border-stone-700">
+                                #{idx + 1}
+                              </div>
+                            </div>
+                            <div className="p-2.5 space-y-2 flex-1 flex flex-col justify-between">
+                              <span className="text-[11px] font-semibold text-stone-300 block truncate">{labels[idx]}</span>
+                              <div className="flex items-center gap-1.5">
+                                <label className="flex-1 py-1.5 px-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition">
+                                  <Upload className="w-3 h-3" />
+                                  <span>Trocar</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => handleUploadFotoPortfólio(idx, e)}
+                                    className="hidden"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoverFotoPortfólio(idx)}
+                                  className="p-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-white border border-stone-800 transition cursor-pointer"
+                                  title="Restaurar imagem padrão"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* CONTEÚDO DA ABA 2: DADOS & ESPECIALIDADES */}
+                {abaPainelPintor === 'perfil' && perfilPintorEdicao && (
+                  <div className="space-y-4 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-stone-300 font-medium mb-1">Nome Completo do Profissional *</label>
+                        <input
+                          type="text"
+                          value={perfilPintorEdicao.nome}
+                          onChange={(e) => setPerfilPintorEdicao({ ...perfilPintorEdicao, nome: e.target.value })}
+                          className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-stone-300 font-medium mb-1">WhatsApp de Contato Direto *</label>
+                        <input
+                          type="text"
+                          value={perfilPintorEdicao.whatsapp}
+                          onChange={(e) => setPerfilPintorEdicao({ ...perfilPintorEdicao, whatsapp: e.target.value })}
+                          placeholder="11999999999"
+                          className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-stone-300 font-medium mb-1">Cidade Principal de Atendimento *</label>
+                        <input
+                          type="text"
+                          value={perfilPintorEdicao.cidade}
+                          onChange={(e) => setPerfilPintorEdicao({ ...perfilPintorEdicao, cidade: e.target.value })}
+                          className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-stone-300 font-medium mb-1">Estado (UF) *</label>
+                          <input
+                            type="text"
+                            maxLength={2}
+                            value={perfilPintorEdicao.estado}
+                            onChange={(e) => setPerfilPintorEdicao({ ...perfilPintorEdicao, estado: e.target.value.toUpperCase() })}
+                            className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white text-xs uppercase text-center focus:border-amber-500 focus:outline-hidden"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-stone-300 font-medium mb-1">Anos de Experiência *</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={60}
+                            value={perfilPintorEdicao.experiencia_anos}
+                            onChange={(e) => setPerfilPintorEdicao({ ...perfilPintorEdicao, experiencia_anos: Number(e.target.value) })}
+                            className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white text-xs text-center focus:border-amber-500 focus:outline-hidden"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-stone-300 font-medium mb-1">Endereço / Bairro de Referência</label>
+                        <input
+                          type="text"
+                          value={perfilPintorEdicao.endereco || ''}
+                          onChange={(e) => setPerfilPintorEdicao({ ...perfilPintorEdicao, endereco: e.target.value })}
+                          placeholder="Ex: Av. Paulista, Bela Vista"
+                          className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Especialidades Selecionáveis */}
+                    <div className="pt-2">
+                      <label className="block text-stone-300 font-bold mb-2">
+                        Especialidades de Atuação (Selecione as que você domina):
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          'Massa Corrida & Nivelamento',
+                          'Cimento Queimado & Texturas',
+                          'Pintura Airless',
+                          'Fachadas & Impermeabilização',
+                          'Esmalte Sintético & Portões',
+                          'Vernizes & Tratamento de Madeiras',
+                          'Pintura Epóxi para Pisos',
+                          'Textura Projetada',
+                          'Tratamento de Mofo & Infiltrações'
+                        ].map((esp) => {
+                          const ativa = perfilPintorEdicao.especialidades?.includes(esp);
+                          return (
+                            <button
+                              key={esp}
+                              type="button"
+                              onClick={() => handleAlternarEspecialidadePainel(esp)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                                ativa
+                                  ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-xs'
+                                  : 'bg-stone-950 text-stone-400 border-stone-800 hover:text-white hover:border-stone-700'
+                              }`}
+                            >
+                              {ativa ? <Check className="w-3.5 h-3.5" /> : <div className="w-2 h-2 rounded-full bg-stone-600" />}
+                              <span>{esp}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* CONTEÚDO DA ABA 3: CARTÃO NA VITRINE */}
+                {abaPainelPintor === 'cartao' && perfilPintorEdicao && (
+                  <div className="space-y-4">
+                    <div className="bg-stone-950 p-4 sm:p-5 rounded-2xl border border-stone-800 space-y-4">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-stone-800">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-amber-500 text-stone-950 font-black text-lg flex items-center justify-center shrink-0 overflow-hidden">
+                            {perfilPintorEdicao.fotos?.[0] ? (
+                              <img src={perfilPintorEdicao.fotos[0]} alt={perfilPintorEdicao.nome} className="w-full h-full object-cover" />
+                            ) : (
+                              perfilPintorEdicao.nome.charAt(0)
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="text-base font-extrabold text-white">{perfilPintorEdicao.nome}</h4>
+                            <p className="text-xs text-stone-300">
+                              {perfilPintorEdicao.cidade} - {perfilPintorEdicao.estado} • {perfilPintorEdicao.experiencia_anos} anos de experiência
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href={`https://wa.me/55${perfilPintorEdicao.whatsapp.replace(/\D/g, '')}?text=Ol%C3%A1%20${encodeURIComponent(perfilPintorEdicao.nome)}!%20Vi%20seu%20perfil%20no%20Pinta%20Aqui%20e%20gostaria%20de%20um%20or%C3%A7amento.`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg transition"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>Falar no WhatsApp</span>
+                        </a>
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block mb-2">Especialidades:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {perfilPintorEdicao.especialidades?.map((esp, i) => (
+                            <span key={i} className="px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-800 text-[11px] text-stone-300">
+                              ✓ {esp}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block mb-2">Fotos do Portfólio:</span>
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                          {perfilPintorEdicao.fotos?.slice(0, 6).map((f, i) => (
+                            <div key={i} className="aspect-square rounded-xl overflow-hidden border border-stone-800 bg-stone-900">
+                              <img src={f} alt={`Trabalho ${i+1}`} className="w-full h-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* BOTÕES DE GRAVAÇÃO DO PAINEL */}
+                <div className="pt-3 border-t border-stone-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAreaPintorModalOpen(false)}
+                    className="w-full sm:w-auto px-5 py-3 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-800 font-bold text-xs transition cursor-pointer"
+                  >
+                    Fechar Janela
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSalvarDadosPintor}
+                    disabled={salvandoDadosPintor}
+                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 transition transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                  >
+                    {salvandoDadosPintor ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
-                        <span>Validando Código no Supabase...</span>
+                        <span>Salvando na Nuvem...</span>
                       </>
                     ) : (
                       <>
-                        <BadgeCheck className="w-4 h-4" />
-                        <span>Ativar Cadastro com Código</span>
+                        <Save className="w-4 h-4" />
+                        <span>Gravar Alterações no Perfil & Portfólio</span>
                       </>
                     )}
                   </button>
                 </div>
+              </div>
+            ) : (
+              /* TELA DE LOGIN / ATIVAÇÃO QUANDO NÃO ESTÁ LOGADO */
+              <div className="space-y-5">
+                {/* Alternador de Abas do Modal */}
+                <div className="grid grid-cols-2 gap-2 p-1 bg-stone-950 rounded-2xl border border-stone-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAbaAreaPintor('login');
+                      setLoginPintorFeedback(null);
+                    }}
+                    className={`py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                      abaAreaPintor === 'login'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-900'
+                    }`}
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Entrar / Acesso Livre</span>
+                  </button>
 
-                <div className="pt-2 text-center">
-                  <p className="text-[11px] text-stone-500">
-                    O cadastro é ativado com a <strong>liberação do supervisor</strong> e a <strong>confirmação da senha enviada por e-mail</strong>.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAbaAreaPintor('ativar');
+                      setAtivacaoPeloModalFeedback(null);
+                    }}
+                    className={`py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                      abaAreaPintor === 'ativar'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-900'
+                    }`}
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Ativar com Código</span>
+                  </button>
                 </div>
+
+                {/* ABA 1: LOGIN DO PINTOR (ACESSO LIVRE) */}
+                {abaAreaPintor === 'login' && (
+                  <div className="space-y-4">
+                    {/* Card de Acesso Livre Master */}
+                    <div className="bg-gradient-to-br from-amber-500/10 via-stone-950 to-stone-950 border border-amber-500/30 p-4 rounded-2xl space-y-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-amber-400 font-extrabold">
+                          <Key className="w-4 h-4 text-amber-400" />
+                          <span>Área do Pintor • Acesso Livre & Funcional</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] border border-emerald-500/30">
+                          Liberado
+                        </span>
+                      </div>
+                      <p className="text-stone-300 leading-relaxed text-xs">
+                        Acesse seu painel com seu e-mail cadastrado ou faça login master com <strong>usuário: admin</strong> e <strong>senha: dndigqol</strong> para acesso livre irrestrito ao painel funcional.
+                      </p>
+                      
+                      {/* Botões de Acesso Rápido em 1 Clique */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLoginEmail('admin');
+                            setLoginSenha('dndigqol');
+                            handleLoginPintor(undefined, 'admin', 'dndigqol');
+                          }}
+                          className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+                        >
+                          <Shield className="w-3.5 h-3.5" />
+                          <span>Entrar Master (admin / dndigqol)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleLoginDemoPintor}
+                          className="py-2.5 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white border border-stone-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        >
+                          <User className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Entrar como Carlos (Demo)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Formulário de Login */}
+                    <form onSubmit={(e) => handleLoginPintor(e)} className="space-y-3.5 text-xs">
+                      {loginPintorFeedback && (
+                        <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2 border transition ${
+                          loginPintorFeedback.type === 'success'
+                            ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                            : loginPintorFeedback.type === 'info'
+                            ? 'bg-amber-950/80 border-amber-500/50 text-amber-200'
+                            : 'bg-red-950/80 border-red-500/50 text-red-200'
+                        }`}>
+                          {loginPintorFeedback.type === 'success' ? (
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                          ) : loginPintorFeedback.type === 'info' ? (
+                            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                          )}
+                          <span>{loginPintorFeedback.text}</span>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-stone-300 font-medium mb-1">
+                          E-mail ou Usuário de Acesso *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={loginEmail}
+                            onChange={(e) => setLoginEmail(e.target.value)}
+                            placeholder="admin ou seuemail@gmail.com"
+                            className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                            required
+                          />
+                          <User className="w-4 h-4 text-stone-500 absolute right-3 top-3" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-stone-300 font-medium mb-1">
+                          Senha Cadastrada ou Senha Master (dndigqol) *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="password"
+                            value={loginSenha}
+                            onChange={(e) => setLoginSenha(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                            required
+                          />
+                          <Lock className="w-4 h-4 text-stone-500 absolute right-3 top-3" />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={loginPintorLoading}
+                        className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/20 cursor-pointer"
+                      >
+                        {loginPintorLoading ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                            <span>Conectando ao Painel do Pintor...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="w-4 h-4" />
+                            <span>Entrar na Área do Pintor</span>
+                          </>
+                        )}
+                      </button>
+                    </form>
+
+                    {/* Rodapé com Links de Ação Rápida */}
+                    <div className="pt-3 border-t border-stone-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-400">
+                      <span>Ainda não possui cadastro de pintor?</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAreaPintorModalOpen(false);
+                          setCadastroModalOpen(true);
+                          setFormSucesso(false);
+                        }}
+                        className="text-amber-400 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Cadastre-se Gratuitamente na Vitrine
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ABA 2: ATIVAR CADASTRO COM CÓDIGO DE 4 DÍGITOS */}
+                {abaAreaPintor === 'ativar' && (
+                  <div className="space-y-5 text-xs">
+                    <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 space-y-2">
+                      <div className="flex items-center gap-2 text-white font-bold">
+                        <Key className="w-4 h-4 text-amber-400" />
+                        <span>Validar Código de Ativação (4 Dígitos)</span>
+                      </div>
+                      <p className="text-stone-300 leading-relaxed text-xs">
+                        Ao concluir o cadastro, o sistema envia uma <strong>senha aleatória de 4 dígitos</strong> (letras e números) para o seu e-mail. Digite o e-mail cadastrado e o código recebido para ativar seu cadastro.
+                      </p>
+                    </div>
+
+                    {ativacaoPeloModalFeedback && (
+                      <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2 border transition ${
+                        ativacaoPeloModalFeedback.type === 'success'
+                          ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                          : 'bg-red-950/80 border-red-500/50 text-red-200'
+                      }`}>
+                        {ativacaoPeloModalFeedback.type === 'success' ? (
+                          <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                        )}
+                        <span>{ativacaoPeloModalFeedback.text}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-stone-300 font-medium mb-1">E-mail Cadastrado *</label>
+                        <input
+                          type="email"
+                          value={loginEmail}
+                          onChange={(e) => setLoginEmail(e.target.value)}
+                          placeholder="exemplo@gmail.com"
+                          className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-stone-300 font-medium mb-1">
+                          Código de Ativação de 4 Dígitos (Enviado por E-mail) *
+                        </label>
+                        <div className="flex justify-center my-2">
+                          <input
+                            type="text"
+                            maxLength={4}
+                            value={loginCodigoAtivacao}
+                            onChange={(e) => setLoginCodigoAtivacao(e.target.value.toUpperCase())}
+                            placeholder="EX: A7K2"
+                            className="w-40 sm:w-48 bg-stone-950 border-2 border-amber-500 rounded-2xl py-2.5 sm:py-3 px-3 sm:px-4 text-center font-mono font-black text-xl sm:text-2xl tracking-[0.3em] sm:tracking-[0.4em] uppercase text-amber-400 shadow-inner focus:outline-hidden focus:ring-2 focus:ring-amber-400/40"
+                          />
+                        </div>
+                        <span className="text-[10px] text-stone-400 text-center block">
+                          Código aleatório de 4 dígitos com letras maiúsculas e números.
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleValidarPeloModalAreaPintor}
+                        disabled={ativandoPeloModal || !loginEmail || !loginCodigoAtivacao}
+                        className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/20 cursor-pointer"
+                      >
+                        {ativandoPeloModal ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                            <span>Validando Código no Supabase...</span>
+                          </>
+                        ) : (
+                          <>
+                            <BadgeCheck className="w-4 h-4" />
+                            <span>Ativar Cadastro com Código</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="pt-2 text-center">
+                      <p className="text-[11px] text-stone-500">
+                        O cadastro é ativado com a <strong>liberação do supervisor</strong> e a <strong>confirmação da senha enviada por e-mail</strong>.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
               </div>
             )}
 

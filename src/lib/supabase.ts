@@ -640,6 +640,76 @@ export async function atualizarStatusPintorNuvem(id: string, novoStatus: 'aprova
 }
 
 /**
+ * Atualiza os dados cadastrais e fotos do portfólio de um pintor no Supabase Cloud.
+ */
+export async function atualizarPintorDadosNuvem(pintor: PintorProfissional): Promise<{ success: boolean; data?: PintorProfissional; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    const payload: any = {
+      nome: pintor.nome?.trim(),
+      whatsapp: pintor.whatsapp?.trim(),
+      cidade: pintor.cidade?.trim(),
+      estado: pintor.estado?.trim(),
+      experiencia_anos: Number(pintor.experiencia_anos) || 1,
+      especialidades: pintor.especialidades || [],
+      fotos: pintor.fotos || []
+    };
+
+    if (pintor.tipo_pessoa) payload.tipo_pessoa = pintor.tipo_pessoa;
+    if (pintor.documento) payload.documento = pintor.documento.trim();
+    if (pintor.cep) payload.cep = pintor.cep.trim();
+    if (pintor.endereco) payload.endereco = pintor.endereco.trim();
+    if (pintor.numero) payload.numero = pintor.numero.trim();
+    if (pintor.complemento !== undefined) payload.complemento = pintor.complemento.trim();
+    if (pintor.bairro) payload.bairro = pintor.bairro.trim();
+    if (pintor.email) payload.email = pintor.email.trim();
+    if (pintor.senha) payload.senha = pintor.senha.trim();
+
+    let query = supabase.from('pintores_profissionais').update(payload);
+    
+    if (pintor.id) {
+      query = query.eq('id', pintor.id);
+    } else if (pintor.email) {
+      query = query.eq('email', pintor.email.trim().toLowerCase());
+    } else if (pintor.whatsapp) {
+      query = query.eq('whatsapp', pintor.whatsapp.trim());
+    } else {
+      return { success: false, error: 'Identificador do pintor não informado.' };
+    }
+
+    const { data, error } = await query.select();
+
+    if (error) {
+      // Se der erro de coluna não encontrada, tenta payload base compatível
+      if (error.message.includes('column') || error.code === '42703') {
+        const payloadBase = {
+          nome: pintor.nome?.trim(),
+          whatsapp: pintor.whatsapp?.trim(),
+          cidade: pintor.cidade?.trim(),
+          estado: pintor.estado?.trim(),
+          experiencia_anos: Number(pintor.experiencia_anos) || 1,
+          especialidades: pintor.especialidades || [],
+          fotos: pintor.fotos || []
+        };
+        let fallbackQuery = supabase.from('pintores_profissionais').update(payloadBase);
+        if (pintor.id) fallbackQuery = fallbackQuery.eq('id', pintor.id);
+        else if (pintor.email) fallbackQuery = fallbackQuery.eq('email', pintor.email.trim().toLowerCase());
+        const fbRes = await fallbackQuery.select();
+        if (fbRes.error) {
+          return { success: false, error: fbRes.error.message };
+        }
+        return { success: true, data: fbRes.data?.[0] || pintor };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data: data?.[0] || pintor };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Falha ao atualizar dados do pintor na nuvem.' };
+  }
+}
+
+/**
  * Exclui um pintor definitivamente do banco de dados na nuvem.
  */
 export async function excluirPintorNuvem(id: string): Promise<{ success: boolean; error?: string }> {
