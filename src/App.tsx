@@ -2868,12 +2868,30 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                   </h3>
                 </div>
 
-                <div className="space-y-2.5 sm:space-y-3 text-slate-300 text-xs sm:text-sm leading-relaxed">
+                <div className="space-y-3.5 text-slate-300 text-xs sm:text-sm leading-relaxed">
                   <p>
-                    Com quase três décadas de vivência diária no segmento de tintas imobiliárias, <strong>Vlademir Carer</strong> acumulou um conhecimento raro e completo: passou pelo chão de fábrica das indústrias químicas, pelo atendimento técnico atrás dos balcões de lojas e, acima de tudo, esteve ao lado dos profissionais nas obras, resolvendo problemas reais de infiltração, mofo, preparação e acabamento.
+                    São quase 30 anos de experiência no mundo das tintas imobiliárias, aprendendo, ensinando e, principalmente, acompanhando de perto os desafios que aparecem todos os dias em uma obra.
                   </p>
                   <p>
-                    O <strong>Pinta Aqui</strong> nasceu dessa experiência como um projeto de vida: democratizar o conhecimento técnico da pintura para que os proprietários protejam seu lar sem desperdício de dinheiro, e ao mesmo tempo criar uma vitrine de respeito e valorização para os verdadeiros pintores profissionais do Brasil.
+                    Ao longo dessa caminhada, Vlademir Carer participou de <strong>diversas visitas técnicas e cursos em diferentes fábricas de tintas e indústrias químicas</strong>, esteve no atendimento técnico de lojas e, principalmente, acompanhou pintores nas obras, ajudando a encontrar soluções para problemas como infiltração, mofo, preparação de superfícies, escolha de produtos e acabamento.
+                  </p>
+                  <p>
+                    Foi dessa experiência que nasceu o <strong>Pinta Aqui</strong>.
+                  </p>
+                  <p>
+                    Mais do que um site sobre pintura, o Pinta Aqui é uma <strong>ferramenta feita para aproximar conhecimento, profissionais e clientes</strong>.
+                  </p>
+                  <p>
+                    Para quem é proprietário ou está construindo, reformando ou simplesmente quer pintar sua casa, o objetivo é ajudar a <strong>entender melhor o serviço, escolher os produtos certos, evitar desperdícios e tomar decisões com mais segurança</strong>.
+                  </p>
+                  <p>
+                    Para os pintores, o Pinta Aqui é um espaço para <strong>aprender, tirar dúvidas, aperfeiçoar conhecimentos e valorizar o trabalho profissional</strong> — seja para quem está dando os primeiros passos na profissão ou para quem já tem anos de experiência.
+                  </p>
+                  <p>
+                    Acreditamos que uma boa pintura vai muito além de passar tinta na parede. <strong>É conhecimento, preparação, técnica, cuidado e responsabilidade.</strong>
+                  </p>
+                  <p>
+                    E é justamente isso que queremos compartilhar: conhecimento de forma simples, prática e útil, para que <strong>clientes façam melhores escolhas e pintores possam fazer um trabalho cada vez melhor e mais valorizado.</strong>
                   </p>
                 </div>
 
