@@ -105,6 +105,7 @@ import {
 } from './lib/themePresets';
 import LogoPintaAqui from './components/LogoPintaAqui';
 import TermosDeUso from './components/TermosDeUso';
+import { FerramentasProfissional } from './components/FerramentasProfissional';
 import { 
   DEFAULT_PATOLOGIA_FOTOS, 
   carregarFotosPatologiasSalvas, 
@@ -2741,7 +2742,10 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
               </div>
             </div>
 
-            {/* 2. Dicas de Mestre (Conteúdo Avançado) */}
+            {/* 2. ARSENAL DO PINTOR DE ELITE: 5 FERRAMENTAS E CONTEÚDOS PRÁTICOS DE CAMPO */}
+            <FerramentasProfissional />
+
+            {/* 3. Dicas de Mestre (Conteúdo Avançado) */}
             <div className="space-y-5 sm:space-y-6">
               <div>
                 <span className="text-amber-400 font-bold text-xs uppercase tracking-wider">Conteúdo Avançado</span>
