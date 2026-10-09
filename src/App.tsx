@@ -92,6 +92,8 @@ import {
   gerarCodigoAtivacao4Digitos,
   salvarFotosPatologiasNuvem,
   carregarFotosPatologiasNuvem,
+  salvarFotosEpisNuvem,
+  carregarFotosEpisNuvem,
   atualizarPintorDadosNuvem
 } from './lib/supabase';
 import { 
@@ -111,6 +113,14 @@ import {
   carregarFotosPatologiasSalvas, 
   salvarFotosPatologiasLocal 
 } from './lib/patologiaFotos';
+import {
+  DEFAULT_EPI_FOTOS,
+  carregarFotosEpisSalvas,
+  salvarFotosEpisLocal,
+  LISTA_EPIS_CONFIG,
+  EpiFotoItem
+} from './lib/epiFotos';
+import { aplicarMascaraTelefone, limparTelefone } from './lib/phoneMask';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'geral' | 'desvendando' | 'tipos' | 'texturas' | 'ferramentas' | 'patologias' | 'profissional' | 'termos'>('geral');
@@ -128,7 +138,7 @@ export default function App() {
   // Supabase & Site Settings (Com credenciais padrão em nuvem)
   const [supabaseUrl, setSupabaseUrl] = useState(DEFAULT_SUPABASE_URL);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(DEFAULT_SUPABASE_ANON_KEY);
-  const [adminTab, setAdminTab] = useState<'pintores' | 'idealizador' | 'patologias' | 'temas' | 'supabase' | 'schema' | 'geral'>('pintores');
+  const [adminTab, setAdminTab] = useState<'pintores' | 'idealizador' | 'patologias' | 'epis' | 'temas' | 'supabase' | 'schema' | 'geral'>('pintores');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Fotos das Patologias da Pintura (Gerenciáveis via Admin e Gravadas na Nuvem)
@@ -138,6 +148,15 @@ export default function App() {
   const [patologiaFeedbackMsg, setPatologiaFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [urlInputPatologias, setUrlInputPatologias] = useState<Record<number, string>>({});
   const [patologiaEditadaIds, setPatologiaEditadaIds] = useState<number[]>([]);
+
+  // Fotos dos 6 EPIs de Segurança (Gerenciáveis via Admin e Gravadas na Nuvem)
+  const [epiFotos, setEpiFotos] = useState<Record<number, string>>(carregarFotosEpisSalvas);
+  const [episModificados, setEpisModificados] = useState(false);
+  const [salvandoEpisNuvem, setSalvandoEpisNuvem] = useState(false);
+  const [epiFeedbackMsg, setEpiFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [urlInputEpis, setUrlInputEpis] = useState<Record<number, string>>({});
+  const [epiEditadaIds, setEpiEditadaIds] = useState<number[]>([]);
+
 
   // Presets de Cores e Fontes (Gravados na Nuvem no Supabase)
   const [activeTheme, setActiveTheme] = useState<ThemePreset>(THEME_PRESETS[0]);
@@ -333,6 +352,19 @@ export default function App() {
     }
     carregarFotosPatologiasInicial();
 
+    // Carregar fotos dos EPIs gravadas na nuvem
+    async function carregarFotosEpisInicial() {
+      try {
+        const fotosEpisNuvem = await carregarFotosEpisNuvem();
+        if (fotosEpisNuvem && Object.keys(fotosEpisNuvem).length > 0) {
+          setEpiFotos(prev => ({ ...DEFAULT_EPI_FOTOS, ...prev, ...fotosEpisNuvem }));
+        }
+      } catch (err) {
+        console.error('Erro ao carregar fotos de EPIs da nuvem:', err);
+      }
+    }
+    carregarFotosEpisInicial();
+
     // Sincronizar URL inicial com a aba de Termos de Uso
     if (window.location.pathname === '/termos' || window.location.hash === '#termos') {
       setActiveTab('termos');
@@ -459,6 +491,123 @@ export default function App() {
       });
     }
     setTimeout(() => setPatologiaFeedbackMsg(null), 8000);
+  };
+
+  // --- HANDLERS DE GERENCIAMENTO DE FOTOS DE EPIS ---
+  const handleUploadFotoEpi = (id: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setEpiFeedbackMsg({
+        text: 'A foto deve ter no máximo 5MB.',
+        type: 'error'
+      });
+      setTimeout(() => setEpiFeedbackMsg(null), 5000);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setEpiFotos(prev => {
+          const updated = { ...prev, [id]: base64 };
+          salvarFotosEpisLocal(updated);
+          window.dispatchEvent(new Event('pintaaqui_epis_updated'));
+          return updated;
+        });
+        setEpisModificados(true);
+        setEpiEditadaIds(prev => Array.from(new Set([...prev, id])));
+        setEpiFeedbackMsg({
+          text: `Foto do EPI #${id} carregada do computador! O botão "Gravar Fotos de EPIs na Nuvem" foi ATIVADO. Clique em Gravar para salvar no Supabase.`,
+          type: 'info'
+        });
+        setTimeout(() => setEpiFeedbackMsg(null), 6000);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSalvarUrlEpi = (id: number) => {
+    const url = urlInputEpis[id]?.trim();
+    if (!url) return;
+
+    setEpiFotos(prev => {
+      const updated = { ...prev, [id]: url };
+      salvarFotosEpisLocal(updated);
+      window.dispatchEvent(new Event('pintaaqui_epis_updated'));
+      return updated;
+    });
+
+    setUrlInputEpis(prev => ({ ...prev, [id]: '' }));
+    setEpisModificados(true);
+    setEpiEditadaIds(prev => Array.from(new Set([...prev, id])));
+    setEpiFeedbackMsg({
+      text: `Link web da foto do EPI #${id} aplicado! O botão "Gravar Fotos de EPIs na Nuvem" foi ATIVADO. Clique em Gravar para salvar no Supabase.`,
+      type: 'info'
+    });
+    setTimeout(() => setEpiFeedbackMsg(null), 6000);
+  };
+
+  const handleRestaurarFotoEpi = (id: number) => {
+    const defaultUrl = DEFAULT_EPI_FOTOS[id];
+    setEpiFotos(prev => {
+      const updated = { ...prev, [id]: defaultUrl };
+      salvarFotosEpisLocal(updated);
+      window.dispatchEvent(new Event('pintaaqui_epis_updated'));
+      return updated;
+    });
+    setEpisModificados(true);
+    setEpiEditadaIds(prev => Array.from(new Set([...prev, id])));
+    setEpiFeedbackMsg({
+      text: `Foto do EPI #${id} restaurada no preview. Clique em "Gravar Fotos de EPIs na Nuvem" para confirmar no Supabase.`,
+      type: 'info'
+    });
+    setTimeout(() => setEpiFeedbackMsg(null), 5000);
+  };
+
+  const handleCarregarTodasFotosEpisPadrao = () => {
+    setEpiFotos(DEFAULT_EPI_FOTOS);
+    salvarFotosEpisLocal(DEFAULT_EPI_FOTOS);
+    window.dispatchEvent(new Event('pintaaqui_epis_updated'));
+    setEpisModificados(true);
+    setEpiEditadaIds(Object.keys(DEFAULT_EPI_FOTOS).map(Number));
+    setEpiFeedbackMsg({
+      text: `Todas as fotos dos 6 EPIs foram restauradas para o acervo padrão! Clique em "Gravar Fotos de EPIs na Nuvem" para confirmar no Supabase.`,
+      type: 'info'
+    });
+    setTimeout(() => setEpiFeedbackMsg(null), 6000);
+  };
+
+  const handleGravarFotosEpisNuvem = async () => {
+    setSalvandoEpisNuvem(true);
+    setEpiFeedbackMsg(null);
+    try {
+      const res = await salvarFotosEpisNuvem(epiFotos);
+      setSalvandoEpisNuvem(false);
+      if (res.success) {
+        setEpisModificados(false);
+        setEpiEditadaIds([]);
+        window.dispatchEvent(new Event('pintaaqui_epis_updated'));
+        setEpiFeedbackMsg({
+          text: `✓ Sucesso! As fotos dos EPIs foram gravadas na Nuvem do Supabase (${res.latencyMs || 80}ms). As novas fotos já estão ativas no site para todos os visitantes!`,
+          type: 'success'
+        });
+      } else {
+        setEpiFeedbackMsg({
+          text: `Erro ao gravar fotos de EPIs no Supabase: ${res.error || 'Falha de comunicação'}.`,
+          type: 'error'
+        });
+      }
+    } catch (err: any) {
+      setSalvandoEpisNuvem(false);
+      setEpiFeedbackMsg({
+        text: `Falha na requisição: ${err?.message || 'Erro inesperado'}.`,
+        type: 'error'
+      });
+    }
+    setTimeout(() => setEpiFeedbackMsg(null), 8000);
   };
 
   const handleAplicarPreviaTema = (preset: ThemePreset) => {
@@ -2691,15 +2840,15 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
 
         {/* ÁREA DO PROFISSIONAL (ESPAÇO DO PINTOR, DICAS DE MESTRE & VITRINE DE PORTFÓLIO) */}
         {(activeTab === 'geral' || activeTab === 'profissional') && (
-          <section id="profissional" className="bg-stone-900 rounded-2xl sm:rounded-3xl p-4 sm:p-8 md:p-10 border border-stone-700 shadow-xl space-y-8 sm:space-y-10 scroll-mt-24 text-stone-100">
+          <section id="profissional" className="bg-stone-900 rounded-2xl sm:rounded-3xl p-3 sm:p-6 md:p-8 border border-stone-700 shadow-xl space-y-6 sm:space-y-8 scroll-mt-24 text-stone-100 w-full max-w-full overflow-hidden">
             
             {/* 1. Espaço do Pintor (Abertura) */}
-            <div className="border-b border-stone-800 pb-6 sm:pb-8 relative">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider mb-3 sm:mb-4">
+            <div className="border-b border-stone-800 pb-5 sm:pb-7 relative w-full">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider mb-3">
                 <Briefcase className="w-3.5 h-3.5" />
                 Espaço do Pintor • Pinta Aqui Pro
               </div>
-              <h2 className="text-xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">
+              <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-white tracking-tight leading-tight break-words">
                 De Profissional para Profissional: O Seu Trabalho Merece Reconhecimento e Valor Real
               </h2>
               <div className="mt-3.5 sm:mt-4 space-y-3 text-stone-300 text-xs sm:text-sm md:text-base leading-relaxed">
@@ -2716,8 +2865,8 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
               </div>
 
               {/* Botão de Cadastro e Informação de Acesso */}
-              <div className="mt-5 sm:mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-stone-950 to-stone-950 border border-amber-500/30">
-                <div className="space-y-1">
+              <div className="mt-5 sm:mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-stone-950 to-stone-950 border border-amber-500/30 w-full">
+                <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2 text-amber-400 font-bold text-xs sm:text-sm">
                     <UserPlus className="w-4 h-4 shrink-0" />
                     <span>Quer divulgar o seu trabalho na Vitrine Oficial?</span>
@@ -2743,7 +2892,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
             </div>
 
             {/* 2. ARSENAL DO PINTOR DE ELITE: 5 FERRAMENTAS E CONTEÚDOS PRÁTICOS DE CAMPO */}
-            <FerramentasProfissional />
+            <FerramentasProfissional epiFotosCustom={epiFotos} />
 
             {/* 3. Dicas de Mestre (Conteúdo Avançado) */}
             <div className="space-y-5 sm:space-y-6">
@@ -3504,6 +3653,17 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     <span>Fotos das Patologias (15)</span>
                   </button>
                   <button
+                    onClick={() => setAdminTab('epis')}
+                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 cursor-pointer ${
+                      adminTab === 'epis'
+                        ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
+                        : 'text-stone-400 hover:text-white hover:bg-stone-800'
+                    }`}
+                  >
+                    <Shield className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Fotos dos EPIs (6)</span>
+                  </button>
+                  <button
                     onClick={() => setAdminTab('temas')}
                     className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 cursor-pointer ${
                       adminTab === 'temas'
@@ -3670,7 +3830,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                                       rel="noreferrer"
                                       className="text-emerald-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
                                     >
-                                      <Phone className="w-3 h-3" /> WhatsApp: {pintor.whatsapp}
+                                      <Phone className="w-3 h-3" /> WhatsApp: {aplicarMascaraTelefone(pintor.whatsapp)}
                                     </a>
 
                                     {pintor.email && (
@@ -4208,6 +4368,226 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                           className="w-full sm:w-auto py-2.5 px-6 rounded-xl bg-stone-950 hover:bg-stone-900 text-amber-400 font-black text-xs flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
                         >
                           {salvandoPatologiasNuvem ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                              <span>Gravando no Supabase...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Cloud className="w-4 h-4 text-amber-400" />
+                              <span>Gravar na Nuvem Agora</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Aba: Fotos dos 6 EPIs de Segurança na Pintura */}
+                {adminTab === 'epis' && (
+                  <div className="space-y-6">
+                    {/* Alerta de Feedback de Alteração de Fotos */}
+                    {epiFeedbackMsg && (
+                      <div className={`p-4 rounded-2xl text-xs flex items-center gap-3 border shadow-md transition ${
+                        epiFeedbackMsg.type === 'success'
+                          ? 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200'
+                          : epiFeedbackMsg.type === 'info'
+                            ? 'bg-amber-950/90 border-amber-500/60 text-amber-200'
+                            : 'bg-red-950/90 border-red-500/60 text-red-200'
+                      }`}>
+                        {epiFeedbackMsg.type === 'success' ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                        ) : epiFeedbackMsg.type === 'info' ? (
+                          <Cloud className="w-5 h-5 text-amber-400 shrink-0 animate-pulse" />
+                        ) : (
+                          <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+                        )}
+                        <span className="font-medium leading-relaxed">{epiFeedbackMsg.text}</span>
+                      </div>
+                    )}
+
+                    {/* Barra de Ação Principal: Gravar Fotos de EPIs na Nuvem */}
+                    <div className="bg-stone-950 border-2 border-stone-800 hover:border-amber-500/40 p-4 sm:p-5 rounded-3xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-2xl transition">
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                            <Shield className="w-5 h-5" />
+                          </div>
+                          <h4 className="text-base font-extrabold text-white">
+                            Fotos dos 6 EPIs Essenciais (Guia de Segurança & NR-06)
+                          </h4>
+                          {episModificados ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-stone-950 text-[10px] font-black uppercase tracking-wider animate-pulse flex items-center gap-1 shadow-xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-stone-950" />
+                              Gravação Necessária
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              Nuvem Sincronizada
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-stone-300 leading-relaxed">
+                          Envie fotos do seu computador ou cole links da internet para os EPIs. Ao gravar na nuvem, as fotos são salvas permanentemente no Supabase e atualizam a Área do Profissional imediatamente.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleGravarFotosEpisNuvem}
+                          disabled={salvandoEpisNuvem || !episModificados}
+                          className={`w-full sm:w-auto py-3 px-5 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xl cursor-pointer ${
+                            episModificados
+                              ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-stone-950 shadow-amber-500/30 ring-4 ring-amber-400/30 transform hover:-translate-y-0.5'
+                              : 'bg-stone-850 text-stone-500 border border-stone-800 opacity-60 cursor-not-allowed'
+                          }`}
+                        >
+                          {salvandoEpisNuvem ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                              <span>Gravando no Supabase...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Cloud className={`w-4 h-4 ${episModificados ? 'text-stone-950 stroke-[2.5]' : 'text-stone-500'}`} />
+                              <span>{episModificados ? "Gravar Fotos na Nuvem" : "Fotos Sincronizadas"}</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleCarregarTodasFotosEpisPadrao}
+                          className="py-3 px-3.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-amber-400/90 border border-stone-800 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                          title="Restaurar todas as fotos de EPIs para o acervo padrão"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Restaurar Padrão</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Grade dos 6 EPIs */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {LISTA_EPIS_CONFIG.map((epi) => {
+                        const fotoAtual = epiFotos[epi.id] || DEFAULT_EPI_FOTOS[epi.id] || epi.defaultImg;
+                        const isEditada = epiEditadaIds.includes(epi.id);
+
+                        return (
+                          <div 
+                            key={epi.id} 
+                            className={`bg-stone-950 rounded-2xl p-4 space-y-3 transition flex flex-col justify-between border ${
+                              isEditada
+                                ? 'border-amber-500/70 shadow-lg shadow-amber-500/10'
+                                : 'border-stone-800 hover:border-stone-700'
+                            }`}
+                          >
+                            <div className="space-y-2.5">
+                              {/* Header do Card */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
+                                      {epi.emoji} EPI #{epi.id} • {epi.categoria}
+                                    </span>
+                                    {isEditada && (
+                                      <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider animate-pulse">
+                                        ● Alterada
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h5 className="font-bold text-white text-sm mt-1 leading-snug">
+                                    {epi.titulo}
+                                  </h5>
+                                </div>
+                              </div>
+
+                              {/* Miniatura da Foto */}
+                              <div className="relative rounded-xl overflow-hidden aspect-16/10 bg-stone-900 border border-stone-800 group shadow-inner">
+                                <img 
+                                  src={fotoAtual} 
+                                  alt={epi.titulo} 
+                                  className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                  onError={(e) => {
+                                    const target = e.currentTarget;
+                                    if (target.src !== epi.defaultImg) {
+                                      target.src = epi.defaultImg;
+                                    }
+                                  }}
+                                />
+                                <div className="absolute top-2 right-2 bg-stone-950/85 backdrop-blur-xs px-2.5 py-0.5 rounded-full text-[10px] text-stone-300 border border-stone-800">
+                                  {fotoAtual.startsWith('data:') ? 'Foto do PC' : 'Link Web'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Controles de Atualização */}
+                            <div className="space-y-2 pt-2 border-t border-stone-900">
+                              {/* Upload de Imagem */}
+                              <label className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-amber-500/20">
+                                <Upload className="w-4 h-4 stroke-[2.5]" />
+                                <span>Enviar Foto do Computador</span>
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  className="hidden" 
+                                  onChange={(e) => handleUploadFotoEpi(epi.id, e)} 
+                                />
+                              </label>
+
+                              {/* URL Direta */}
+                              <div className="flex gap-1.5">
+                                <input 
+                                  type="url" 
+                                  placeholder="Ou cole o link da foto..." 
+                                  value={urlInputEpis[epi.id] || ''} 
+                                  onChange={(e) => setUrlInputEpis(prev => ({ ...prev, [epi.id]: e.target.value }))}
+                                  className="flex-1 min-w-0 bg-stone-900 border border-stone-700 rounded-xl px-3 py-1.5 text-xs text-white font-mono placeholder:text-stone-600 focus:border-amber-500 focus:outline-hidden"
+                                />
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleSalvarUrlEpi(epi.id)}
+                                  disabled={!urlInputEpis[epi.id]?.trim()}
+                                  className="px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-750 disabled:opacity-40 text-stone-200 text-xs font-bold cursor-pointer transition border border-stone-700 shrink-0"
+                                >
+                                  Aplicar
+                                </button>
+                              </div>
+
+                              {/* Ações Auxiliares */}
+                              <div className="flex items-center justify-between text-[11px] text-stone-400 pt-0.5">
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleRestaurarFotoEpi(epi.id)}
+                                  className="text-stone-400 hover:text-amber-400 underline inline-flex items-center gap-1 cursor-pointer transition text-[11px]"
+                                >
+                                  <RotateCcw className="w-2.5 h-2.5" /> Restaurar padrão
+                                </button>
+                                <span className="text-[10px] text-stone-600">EPI #{epi.id}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Barra Flutuante de Gravação no Rodapé se modificado */}
+                    {episModificados && (
+                      <div className="sticky bottom-0 z-20 p-4 rounded-2xl bg-amber-500 text-stone-950 font-black shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 border-2 border-amber-300">
+                        <div className="flex items-center gap-2 text-xs sm:text-sm">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping" />
+                          <span>Fotos de EPIs alteradas prontas para gravação na nuvem!</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleGravarFotosEpisNuvem}
+                          disabled={salvandoEpisNuvem}
+                          className="w-full sm:w-auto py-2.5 px-6 rounded-xl bg-stone-950 hover:bg-stone-900 text-amber-400 font-black text-xs flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
+                        >
+                          {salvandoEpisNuvem ? (
                             <>
                               <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
                               <span>Gravando no Supabase...</span>
@@ -5156,6 +5536,10 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                       <span className="text-stone-300 font-mono text-[11px]">
                         {pintorParaVisualizar.tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF'}: {pintorParaVisualizar.documento}
                       </span>
+                      <span>•</span>
+                      <span className="text-emerald-400 font-mono text-[11px] flex items-center gap-1">
+                        <Phone className="w-3 h-3" /> {aplicarMascaraTelefone(pintorParaVisualizar.whatsapp)}
+                      </span>
                     </div>
                     <div className="flex flex-wrap gap-1.5 pt-2">
                       {pintorParaVisualizar.especialidades?.map((esp, i) => (
@@ -5253,7 +5637,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
       {/* MODAL DE CADASTRO DO PINTOR PROFISSIONAL (PÚBLICO) */}
       {cadastroModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-xs">
-          <div className="bg-stone-900 border border-stone-700 text-stone-100 rounded-2xl sm:rounded-3xl w-full max-w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl p-4 sm:p-7 md:p-8 space-y-5 sm:space-y-6">
+          <div className="bg-stone-900 border border-stone-700 text-stone-100 rounded-2xl sm:rounded-3xl w-full max-w-full sm:max-w-2xl max-h-[92dvh] overflow-y-auto overflow-x-hidden shadow-2xl p-3.5 sm:p-6 md:p-8 space-y-4 sm:space-y-6">
             
             {/* Header do Cadastro */}
             <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-stone-800">
@@ -5487,8 +5871,9 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                     <input
                       type="text"
                       value={formWhatsapp}
-                      onChange={(e) => setFormWhatsapp(e.target.value)}
-                      placeholder="(11) 98765-4321"
+                      onChange={(e) => setFormWhatsapp(aplicarMascaraTelefone(e.target.value))}
+                      placeholder="(11) 9.8765.4321"
+                      maxLength={17}
                       className="w-full min-w-0 bg-stone-900 border border-stone-700 rounded-xl px-3.5 py-2 text-white font-mono focus:border-amber-500 focus:outline-hidden text-xs"
                       required
                     />
@@ -5762,7 +6147,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-xs">
           <div className={`bg-stone-900 border border-stone-700 text-stone-100 rounded-2xl sm:rounded-3xl w-full ${
             pintorLogado ? 'max-w-full sm:max-w-4xl' : 'max-w-full sm:max-w-xl'
-          } max-h-[92vh] overflow-y-auto shadow-2xl p-4 sm:p-7 md:p-8 space-y-5 sm:space-y-6`}>
+          } max-h-[92dvh] overflow-y-auto overflow-x-hidden shadow-2xl p-3.5 sm:p-6 md:p-8 space-y-4 sm:space-y-6`}>
             
             {/* Header da Área do Pintor */}
             <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-stone-800">
@@ -5816,7 +6201,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                         {perfilPintorEdicao?.cidade || 'São Paulo'} - {perfilPintorEdicao?.estado || 'SP'} • {perfilPintorEdicao?.experiencia_anos || 15} anos de experiência
                       </p>
                       <p className="text-[11px] text-stone-400 font-mono mt-0.5">
-                        {perfilPintorEdicao?.email || pintorLogado.email} • WhatsApp: {perfilPintorEdicao?.whatsapp || '11999999999'}
+                        {perfilPintorEdicao?.email || pintorLogado.email} • WhatsApp: {aplicarMascaraTelefone(perfilPintorEdicao?.whatsapp || pintorLogado.whatsapp || '11999999999')}
                       </p>
                     </div>
                   </div>
@@ -5978,9 +6363,10 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                         <input
                           type="text"
                           value={perfilPintorEdicao.whatsapp}
-                          onChange={(e) => setPerfilPintorEdicao({ ...perfilPintorEdicao, whatsapp: e.target.value })}
-                          placeholder="11999999999"
-                          className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-amber-500 focus:outline-hidden"
+                          onChange={(e) => setPerfilPintorEdicao({ ...perfilPintorEdicao, whatsapp: aplicarMascaraTelefone(e.target.value) })}
+                          placeholder="(11) 9.8765.4321"
+                          maxLength={17}
+                          className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs focus:border-amber-500 focus:outline-hidden"
                           required
                         />
                       </div>
@@ -6090,7 +6476,7 @@ CREATE POLICY "Inserção de postagens na comunidade" ON public.comunidade_posta
                           <div>
                             <h4 className="text-base font-extrabold text-white">{perfilPintorEdicao.nome}</h4>
                             <p className="text-xs text-stone-300">
-                              {perfilPintorEdicao.cidade} - {perfilPintorEdicao.estado} • {perfilPintorEdicao.experiencia_anos} anos de experiência
+                              {perfilPintorEdicao.cidade} - {perfilPintorEdicao.estado} • {perfilPintorEdicao.experiencia_anos} anos • {aplicarMascaraTelefone(perfilPintorEdicao.whatsapp)}
                             </p>
                           </div>
                         </div>

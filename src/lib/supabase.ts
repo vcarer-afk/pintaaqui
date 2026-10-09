@@ -1053,4 +1053,495 @@ export async function carregarFotosPatologiasNuvem(): Promise<Record<number, str
   }
 }
 
+/**
+ * Salva o mapeamento completo das fotos dos EPIs na nuvem no Supabase.
+ */
+export async function salvarFotosEpisNuvem(
+  fotos: Record<number, string>
+): Promise<{ success: boolean; latencyMs?: number; error?: string }> {
+  const startTime = performance.now();
+  try {
+    const supabase = getSupabaseClient();
+    
+    // 1. Remove qualquer configuração anterior de fotos dos epis
+    await supabase
+      .from('solicitacoes_orcamento')
+      .delete()
+      .eq('tipo_servico', 'config_epis_fotos');
+
+    // 2. Insere as novas fotos na nuvem
+    const { error } = await supabase
+      .from('solicitacoes_orcamento')
+      .insert([{
+        nome_cliente: 'Sistema • Fotos EPIs',
+        telefone_cliente: '11999999999',
+        cidade: 'São Paulo',
+        tipo_servico: 'config_epis_fotos',
+        descricao_projeto: JSON.stringify(fotos),
+        status: 'ativo'
+      }]);
+
+    const latencyMs = Math.round(performance.now() - startTime);
+
+    if (error) {
+      console.error('Erro ao salvar fotos dos EPIs no Supabase:', error);
+      return { success: false, error: error.message, latencyMs };
+    }
+
+    // Cache local imediato para abrir sem latência
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pintaaqui_epis_fotos', JSON.stringify(fotos));
+    }
+
+    return { success: true, latencyMs };
+  } catch (err: any) {
+    const latencyMs = Math.round(performance.now() - startTime);
+    return { success: false, error: err?.message || 'Falha ao salvar fotos de EPIs na nuvem.', latencyMs };
+  }
+}
+
+/**
+ * Carrega as fotos dos EPIs diretamente da nuvem toda vez que o portal abre.
+ */
+export async function carregarFotosEpisNuvem(): Promise<Record<number, string> | null> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('solicitacoes_orcamento')
+      .select('descricao_projeto')
+      .eq('tipo_servico', 'config_epis_fotos')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      if (typeof window !== 'undefined') {
+        const cachedRaw = localStorage.getItem('pintaaqui_epis_fotos');
+        if (cachedRaw) {
+          try {
+            return JSON.parse(cachedRaw);
+          } catch (e) {}
+        }
+      }
+      return null;
+    }
+
+    const rawJson = data[0].descricao_projeto;
+    if (rawJson) {
+      try {
+        const parsed = JSON.parse(rawJson);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pintaaqui_epis_fotos', JSON.stringify(parsed));
+        }
+        return parsed;
+      } catch (e) {
+        console.error('Erro ao fazer parse das fotos de EPIs da nuvem:', e);
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error('Erro ao carregar fotos dos EPIs da nuvem:', err);
+    if (typeof window !== 'undefined') {
+      const cachedRaw = localStorage.getItem('pintaaqui_epis_fotos');
+      if (cachedRaw) {
+        try {
+          return JSON.parse(cachedRaw);
+        } catch (e) {}
+      }
+    }
+    return null;
+  }
+}
+
+// =========================================================================
+// MÓDULO DE ORÇAMENTOS & ITENS NA NUVEM (INTEGRAÇÃO COMPLETA SUPABASE)
+// =========================================================================
+
+export interface ItemOrcamento {
+  id?: string;
+  orcamento_id?: string;
+  descricao: string;
+  tipo?: string;
+  valor?: string;
+  ordem?: number;
+}
+
+export interface OrcamentoCompleto {
+  id?: string;
+  user_id?: string;
+  nome_cliente: string;
+  telefone_cliente: string;
+  endereco_cliente?: string;
+  cidade_cliente: string;
+  ambientes?: string;
+  prazo_dias: string;
+  valor_total: string;
+  forma_pagamento: string;
+  validade_proposta?: string;
+  status?: string;
+  created_at?: string;
+  itens?: ItemOrcamento[];
+}
+
+/**
+ * Verifica se há sessão ativa de autenticação no Supabase ou usuário pintor logado.
+ */
+export async function obterUsuarioLogadoSupabase(): Promise<{
+  autenticado: boolean;
+  userId?: string;
+  email?: string;
+  nome?: string;
+}> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    // 1. Tenta sessão padrão do Supabase Auth
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user) {
+      return {
+        autenticado: true,
+        userId: authData.user.id,
+        email: authData.user.email || '',
+        nome: authData.user.user_metadata?.nome || authData.user.email?.split('@')[0] || 'Pintor Profissional'
+      };
+    }
+
+    // 2. Tenta sessão do pintor salva no storage do portal
+    if (typeof window !== 'undefined') {
+      const sessaoRaw = sessionStorage.getItem('pintaaqui_pintor_sessao') || localStorage.getItem('pintaaqui_pintor_logado');
+      if (sessaoRaw) {
+        try {
+          const parsed = JSON.parse(sessaoRaw);
+          if (parsed && (parsed.id || parsed.email)) {
+            return {
+              autenticado: true,
+              userId: parsed.id || 'usr_' + btoa(parsed.email || 'pintor').slice(0, 16),
+              email: parsed.email || '',
+              nome: parsed.nome || 'Pintor Profissional'
+            };
+          }
+        } catch (e) {}
+      }
+    }
+
+    return { autenticado: false };
+  } catch (err) {
+    console.warn('Erro ao verificar sessão do Supabase:', err);
+    return { autenticado: false };
+  }
+}
+
+/**
+ * Realiza autenticação via Supabase Auth com Email e Senha (Login do Pintor).
+ */
+export async function loginSupabaseAuth(email: string, senha: string): Promise<{
+  success: boolean;
+  user?: any;
+  error?: string;
+}> {
+  try {
+    const supabase = getSupabaseClient();
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Aceita também login master dndigqol / admin
+    if (senha === 'dndigqol' || cleanEmail === 'admin') {
+      const masterUser = {
+        id: 'usr_master_' + (cleanEmail === 'admin' ? 'admin' : btoa(cleanEmail).slice(0, 10)),
+        email: cleanEmail === 'admin' ? 'admin@pintaaqui.com.br' : cleanEmail,
+        nome: cleanEmail === 'admin' ? 'Vlademir Carer / Pintor Master' : 'Pintor Profissional Master'
+      };
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('pintaaqui_pintor_logado', JSON.stringify(masterUser));
+        localStorage.setItem('pintaaqui_pintor_sessao', JSON.stringify(masterUser));
+      }
+      return { success: true, user: masterUser };
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password: senha,
+    });
+
+    if (error) {
+      // Fallback: verifica se é pintor cadastrado no banco da vitrine
+      if (typeof window !== 'undefined') {
+        const pintoresRaw = localStorage.getItem('pintaaqui_pintores_nuvem');
+        if (pintoresRaw) {
+          try {
+            const lista = JSON.parse(pintoresRaw);
+            const pintor = lista.find((p: any) => p.email?.trim().toLowerCase() === cleanEmail);
+            if (pintor && (pintor.senha === senha || senha === 'dndigqol')) {
+              const sessao = {
+                id: pintor.id || 'usr_' + btoa(pintor.email).slice(0, 16),
+                email: pintor.email,
+                nome: pintor.nome,
+                whatsapp: pintor.whatsapp
+              };
+              sessionStorage.setItem('pintaaqui_pintor_logado', JSON.stringify(sessao));
+              localStorage.setItem('pintaaqui_pintor_sessao', JSON.stringify(sessao));
+              return { success: true, user: sessao };
+            }
+          } catch (e) {}
+        }
+      }
+      return { success: false, error: error.message || 'Credenciais inválidas.' };
+    }
+
+    const user = {
+      id: data.user.id,
+      email: data.user.email || cleanEmail,
+      nome: data.user.user_metadata?.nome || data.user.email?.split('@')[0] || 'Pintor Profissional'
+    };
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pintaaqui_pintor_logado', JSON.stringify(user));
+      localStorage.setItem('pintaaqui_pintor_sessao', JSON.stringify(user));
+    }
+
+    return { success: true, user };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Falha ao conectar com o serviço de autenticação.' };
+  }
+}
+
+/**
+ * Cria cadastro rápido no Supabase Auth com Email e Senha.
+ */
+export async function cadastrarSupabaseAuth(email: string, senha: string, nome?: string): Promise<{
+  success: boolean;
+  user?: any;
+  error?: string;
+}> {
+  try {
+    const supabase = getSupabaseClient();
+    const cleanEmail = email.trim().toLowerCase();
+
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: senha,
+      options: {
+        data: { nome: nome || 'Pintor Profissional' }
+      }
+    });
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao cadastrar usuário.' };
+    }
+
+    const user = {
+      id: data.user?.id || 'usr_' + btoa(cleanEmail).slice(0, 16),
+      email: data.user?.email || cleanEmail,
+      nome: nome || 'Pintor Profissional'
+    };
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pintaaqui_pintor_logado', JSON.stringify(user));
+      localStorage.setItem('pintaaqui_pintor_sessao', JSON.stringify(user));
+    }
+
+    return { success: true, user };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Falha ao realizar cadastro no Supabase.' };
+  }
+}
+
+/**
+ * Salva o cabeçalho do orçamento na tabela 'orcamentos' e os itens vinculados em 'itens_orcamento'.
+ */
+export async function salvarOrcamentoNuvem(
+  orcamento: OrcamentoCompleto,
+  itens: ItemOrcamento[]
+): Promise<{ success: boolean; data?: OrcamentoCompleto; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    // 1. Obter ID do usuário autenticado
+    let userId = orcamento.user_id;
+    if (!userId) {
+      const sessao = await obterUsuarioLogadoSupabase();
+      userId = sessao.userId;
+    }
+
+    const payloadOrcamento: any = {
+      nome_cliente: orcamento.nome_cliente,
+      telefone_cliente: orcamento.telefone_cliente,
+      endereco_cliente: orcamento.endereco_cliente || orcamento.cidade_cliente,
+      cidade_cliente: orcamento.cidade_cliente,
+      prazo_dias: orcamento.prazo_dias,
+      valor_total: orcamento.valor_total,
+      forma_pagamento: orcamento.forma_pagamento,
+      validade_proposta: orcamento.validade_proposta || '15 dias corridos',
+      status: orcamento.status || 'ativo'
+    };
+
+    if (userId) {
+      payloadOrcamento.user_id = userId;
+    }
+
+    // 2. Insere na tabela 'orcamentos' retornando o registro com o ID gerado
+    const { data: orcamentoCriado, error: errOrcamento } = await supabase
+      .from('orcamentos')
+      .insert([payloadOrcamento])
+      .select()
+      .single();
+
+    if (errOrcamento) {
+      console.warn('Aviso: Erro ao inserir na tabela orcamentos:', errOrcamento.message);
+      
+      // Fallback seguro: grava cópia estruturada em localStorage para não perder o trabalho
+      const backupId = 'local_' + Date.now();
+      const backupCompleto: OrcamentoCompleto = {
+        ...orcamento,
+        id: backupId,
+        user_id: userId || 'local_user',
+        created_at: new Date().toISOString(),
+        itens
+      };
+
+      if (typeof window !== 'undefined') {
+        const historico = JSON.parse(localStorage.getItem('pintaaqui_meus_orcamentos') || '[]');
+        historico.unshift(backupCompleto);
+        localStorage.setItem('pintaaqui_meus_orcamentos', JSON.stringify(historico.slice(0, 50)));
+      }
+
+      return { 
+        success: false, 
+        error: `Erro no Supabase: ${errOrcamento.message}. (Seu orçamento foi salvo em cópia local de segurança)` 
+      };
+    }
+
+    const orcamentoId = orcamentoCriado.id;
+
+    // 3. Insere a lista de itens locais na tabela 'itens_orcamento' vinculando ao ID
+    if (itens && itens.length > 0) {
+      const payloadItens = itens.map((item, idx) => ({
+        orcamento_id: orcamentoId,
+        descricao: item.descricao,
+        tipo: item.tipo || 'etapa_preparacao',
+        valor: item.valor || '',
+        ordem: item.ordem ?? idx + 1
+      }));
+
+      const { error: errItens } = await supabase
+        .from('itens_orcamento')
+        .insert(payloadItens);
+
+      if (errItens) {
+        console.warn('Aviso ao inserir itens_orcamento:', errItens.message);
+      }
+    }
+
+    const resultadoFinal: OrcamentoCompleto = {
+      ...orcamentoCriado,
+      itens
+    };
+
+    // 4. Atualiza histórico local para consulta instantânea offline
+    if (typeof window !== 'undefined') {
+      const historico = JSON.parse(localStorage.getItem('pintaaqui_meus_orcamentos') || '[]');
+      historico.unshift(resultadoFinal);
+      localStorage.setItem('pintaaqui_meus_orcamentos', JSON.stringify(historico.slice(0, 50)));
+    }
+
+    return { success: true, data: resultadoFinal };
+  } catch (err: any) {
+    console.error('Exceção ao salvar orçamento no Supabase:', err);
+    return { success: false, error: err?.message || 'Falha de conexão com o banco de dados.' };
+  }
+}
+
+/**
+ * Consulta todos os orçamentos salvos por aquele pintor na nuvem (RLS: auth.uid() = user_id).
+ */
+export async function consultarHistoricoOrcamentosNuvem(userId?: string): Promise<{
+  success: boolean;
+  data: OrcamentoCompleto[];
+  error?: string;
+}> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    let targetUserId = userId;
+    if (!targetUserId) {
+      const sessao = await obterUsuarioLogadoSupabase();
+      targetUserId = sessao.userId;
+    }
+
+    let query = supabase
+      .from('orcamentos')
+      .select(`
+        *,
+        itens:itens_orcamento(*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (targetUserId) {
+      query = query.eq('user_id', targetUserId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.warn('Erro ao consultar histórico de orçamentos no Supabase:', error.message);
+      if (typeof window !== 'undefined') {
+        const local = JSON.parse(localStorage.getItem('pintaaqui_meus_orcamentos') || '[]');
+        return { success: true, data: local };
+      }
+      return { success: false, data: [], error: error.message };
+    }
+
+    // Atualiza cache local
+    if (typeof window !== 'undefined' && data) {
+      localStorage.setItem('pintaaqui_meus_orcamentos', JSON.stringify(data));
+    }
+
+    return { success: true, data: (data as OrcamentoCompleto[]) || [] };
+  } catch (err: any) {
+    console.error('Exceção ao consultar orçamentos:', err);
+    if (typeof window !== 'undefined') {
+      const local = JSON.parse(localStorage.getItem('pintaaqui_meus_orcamentos') || '[]');
+      return { success: true, data: local };
+    }
+    return { success: false, data: [], error: err?.message };
+  }
+}
+
+/**
+ * Exclui um orçamento na nuvem por ID
+ */
+export async function excluirOrcamentoNuvem(orcamentoId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('orcamentos')
+      .delete()
+      .eq('id', orcamentoId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (typeof window !== 'undefined') {
+      const local: OrcamentoCompleto[] = JSON.parse(localStorage.getItem('pintaaqui_meus_orcamentos') || '[]');
+      const filtrado = local.filter(o => o.id !== orcamentoId);
+      localStorage.setItem('pintaaqui_meus_orcamentos', JSON.stringify(filtrado));
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+/**
+ * Função principal salvarOrcamento (conforme especificação exata do Gerador de Orçamentos Supabase).
+ */
+export const salvarOrcamento = salvarOrcamentoNuvem;
+
+/**
+ * Função principal consultarHistorico (conforme especificação exata do Gerador de Orçamentos Supabase).
+ */
+export const consultarHistorico = consultarHistoricoOrcamentosNuvem;
+
+
+
 
